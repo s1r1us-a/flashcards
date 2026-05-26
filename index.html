@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f0c29" />
+  <title>Flashcards – Karteikarten</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-1"></span>
+    <span class="orb orb-2"></span>
+    <span class="orb orb-3"></span>
+  </div>
+
+  <header class="topbar">
+    <button class="brand" data-action="go-home" aria-label="Zur Übersicht">
+      <span class="brand-icon">◆</span>
+      <span class="brand-name">Flashcards</span>
+    </button>
+    <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+  </header>
+
+  <main id="app" class="app">
+    <!-- VIEW: Box overview -->
+    <section class="view" data-view="boxes" hidden>
+      <div class="view-head">
+        <div>
+          <h1>Deine Boxen</h1>
+          <p class="muted">Sammle deine Karteikarten in farbigen Themen-Boxen.</p>
+        </div>
+        <div class="view-actions">
+          <input class="input search" id="search-boxes" type="search" placeholder="Boxen durchsuchen…" />
+          <button class="btn primary" data-action="new-box">+ Neue Box</button>
+        </div>
+      </div>
+      <div class="grid" id="boxes-grid"></div>
+      <div class="empty" id="boxes-empty" hidden>
+        <div class="empty-icon">📚</div>
+        <h2>Noch keine Boxen</h2>
+        <p class="muted">Lege deine erste Themen-Box an und beginne, Karten zu sammeln.</p>
+        <button class="btn primary" data-action="new-box">+ Erste Box erstellen</button>
+      </div>
+    </section>
+
+    <!-- VIEW: Box detail / cards -->
+    <section class="view" data-view="cards" hidden>
+      <div class="view-head">
+        <div>
+          <h1 id="box-title">Box</h1>
+          <p class="muted" id="box-meta">0 Karten</p>
+        </div>
+        <div class="view-actions">
+          <input class="input search" id="search-cards" type="search" placeholder="Karten durchsuchen…" />
+          <button class="btn ghost" data-action="study-start">Lernen starten</button>
+          <button class="btn primary" data-action="new-card">+ Neue Karte</button>
+          <button class="btn icon" data-action="delete-box" title="Box löschen" aria-label="Box löschen">🗑</button>
+        </div>
+      </div>
+      <div class="grid cards-grid" id="cards-grid"></div>
+      <div class="empty" id="cards-empty" hidden>
+        <div class="empty-icon">🃏</div>
+        <h2>Keine Karten in dieser Box</h2>
+        <p class="muted">Erstelle deine erste Karteikarte mit Frage und Antwort.</p>
+        <button class="btn primary" data-action="new-card">+ Erste Karte erstellen</button>
+      </div>
+    </section>
+
+    <!-- VIEW: Study mode -->
+    <section class="view study" data-view="study" hidden>
+      <div class="study-head">
+        <button class="btn ghost" data-action="study-exit">← Beenden</button>
+        <div class="progress-wrap">
+          <div class="progress"><div class="progress-bar" id="study-progress"></div></div>
+          <div class="progress-label" id="study-count">0 / 0</div>
+        </div>
+      </div>
+
+      <div class="study-stage">
+        <div class="flipcard" id="flipcard" role="button" tabindex="0" aria-label="Karte umdrehen">
+          <div class="flipcard-inner">
+            <div class="flipcard-face flipcard-front">
+              <span class="face-label">Frage</span>
+              <div class="face-content" id="study-front"></div>
+              <span class="face-hint">Klick zum Umdrehen</span>
+            </div>
+            <div class="flipcard-face flipcard-back">
+              <span class="face-label">Antwort</span>
+              <div class="face-content" id="study-back"></div>
+              <span class="face-hint">Wie war es?</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="study-actions" id="study-actions">
+        <button class="btn wrong" data-action="study-answer" data-correct="false">✕ Wusste ich nicht</button>
+        <button class="btn correct" data-action="study-answer" data-correct="true">✓ Wusste ich</button>
+      </div>
+    </section>
+
+    <!-- VIEW: Study finished -->
+    <section class="view finish" data-view="finish" hidden>
+      <div class="finish-card glass">
+        <div class="finish-icon">🎉</div>
+        <h1>Runde beendet!</h1>
+        <div class="finish-stats" id="finish-stats"></div>
+        <div class="finish-actions">
+          <button class="btn ghost" data-action="study-again">Nochmal lernen</button>
+          <button class="btn primary" data-action="go-box">Zurück zur Box</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: Box -->
+  <div class="modal" id="modal-box" hidden>
+    <div class="modal-backdrop" data-action="close-modal"></div>
+    <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="modal-box-title">
+      <h2 id="modal-box-title">Neue Box</h2>
+      <label class="field">
+        <span>Name</span>
+        <input class="input" id="box-name" type="text" placeholder="z. B. Spanisch Vokabeln" maxlength="60" />
+      </label>
+      <label class="field">
+        <span>Farbe</span>
+        <div class="swatches" id="box-swatches"></div>
+      </label>
+      <div class="modal-actions">
+        <button class="btn ghost" data-action="close-modal">Abbrechen</button>
+        <button class="btn primary" data-action="save-box">Speichern</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Card -->
+  <div class="modal" id="modal-card" hidden>
+    <div class="modal-backdrop" data-action="close-modal"></div>
+    <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="modal-card-title">
+      <h2 id="modal-card-title">Neue Karte</h2>
+      <label class="field">
+        <span>Vorderseite (Frage)</span>
+        <textarea class="input" id="card-front" rows="3" placeholder="Was steht auf der Vorderseite?"></textarea>
+      </label>
+      <label class="field">
+        <span>Rückseite (Antwort)</span>
+        <textarea class="input" id="card-back" rows="3" placeholder="Die Antwort dazu…"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button class="btn ghost" data-action="close-modal">Abbrechen</button>
+        <button class="btn primary" data-action="save-card">Speichern</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" hidden></div>
+
+  <!--
+    FIREBASE PLACEHOLDER
+    Um Firebase Realtime DB später zu aktivieren:
+    1. Firebase-Konfiguration in js/store.js eintragen
+    2. Die folgenden <script>-Tags vor js/store.js einfügen:
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  -->
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
