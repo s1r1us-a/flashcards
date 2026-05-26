@@ -207,7 +207,9 @@
 
     $("#box-name").value = name;
     renderSwatches();
-    $("#modal-box").hidden = false;
+    const m = $("#modal-box");
+    m.hidden = false;
+    m.style.display = "";
     if (!matchMedia("(pointer: coarse)").matches) {
       setTimeout(() => $("#box-name").focus(), 50);
     }
@@ -228,15 +230,21 @@
 
     $("#card-front").value = front;
     $("#card-back").value = back;
-    $("#modal-card").hidden = false;
+    const m = $("#modal-card");
+    m.hidden = false;
+    m.style.display = "";
     if (!matchMedia("(pointer: coarse)").matches) {
       setTimeout(() => $("#card-front").focus(), 50);
     }
   }
 
   function closeModals() {
-    $("#modal-box").hidden = true;
-    $("#modal-card").hidden = true;
+    const mb = $("#modal-box");
+    const mc = $("#modal-card");
+    mb.hidden = true;
+    mc.hidden = true;
+    mb.style.display = "none";
+    mc.style.display = "none";
     state.modal.type = null;
     state.modal.editingId = null;
   }
@@ -510,6 +518,7 @@
   }
 
   function init() {
+    closeModals();
     bindEvents();
     setView("boxes");
     renderBoxes();

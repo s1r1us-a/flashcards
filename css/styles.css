@@ -427,7 +427,8 @@ body {
   -webkit-overflow-scrolling: touch;
   animation: fade-in 180ms ease;
 }
-.modal[hidden] { display: none; }
+.modal[hidden],
+[hidden] { display: none !important; }
 .modal-backdrop {
   position: fixed;
   inset: 0;
