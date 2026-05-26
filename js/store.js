@@ -1,208 +1,170 @@
 /* =============================================================================
  * Flashcards – Data Access Layer
- *
- * Exposes a single global `Store` with a promise-based API. The current
- * implementation persists to `localStorage`. The API mirrors what a Firebase
- * Realtime DB layer would offer so the upgrade is a one-line swap below.
- *
- * ────────────────────────────────────────────────────────────────────────────
- * FIREBASE PLACEHOLDER
- *
- * To switch to Firebase Realtime DB later:
- *   1. Include Firebase SDK scripts in index.html (see the comment block there).
- *   2. Fill in `firebaseConfig` below.
- *   3. At the bottom of this file change:
- *        window.Store = LocalStore;
- *      to:
- *        window.Store = FirebaseStore;
- *
- * The `FirebaseStore` skeleton at the bottom of this file already has the
- * same method signatures – only the bodies need to be implemented.
- * ────────────────────────────────────────────────────────────────────────────
- */
+ * Backed by Firebase Realtime Database.
+ * ========================================================================== */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAnalytics, isSupported as analyticsSupported }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics.js";
+import {
+  getDatabase, ref, onValue, set, update, remove,
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
-  // apiKey:        "",
-  // authDomain:    "",
-  // databaseURL:   "",
-  // projectId:     "",
-  // storageBucket: "",
-  // appId:         "",
+  apiKey: "AIzaSyDf19KTKfpjKZyLRR4guw18Em3B6FqoTp8",
+  authDomain: "flashcards-98d40.firebaseapp.com",
+  databaseURL: "https://flashcards-98d40-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "flashcards-98d40",
+  storageBucket: "flashcards-98d40.firebasestorage.app",
+  messagingSenderId: "269035893008",
+  appId: "1:269035893008:web:caec98e8ff6a6aa8713595",
+  measurementId: "G-Y3041VDZ3F",
 };
 
-const STORAGE_KEY = "flashcards_v1";
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+analyticsSupported().then((ok) => { if (ok) getAnalytics(app); }).catch(() => {});
+
+/* ---------- helpers ---------- */
 
 function uid(prefix) {
   return prefix + "_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
 
-function emptyState() {
-  return { categories: [], cards: [] };
+const cache = { categories: {}, cards: {} };
+const listeners = new Set();
+let ready = { categories: false, cards: false };
+
+function notify() {
+  listeners.forEach((cb) => {
+    try { cb(cache); } catch (e) { console.error("[Store] listener error", e); }
+  });
 }
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyState();
-    const parsed = JSON.parse(raw);
-    return {
-      categories: Array.isArray(parsed.categories) ? parsed.categories : [],
-      cards: Array.isArray(parsed.cards) ? parsed.cards : [],
-    };
-  } catch (err) {
-    console.warn("[Store] Failed to parse localStorage – resetting.", err);
-    return emptyState();
-  }
-}
+onValue(ref(db, "categories"), (snap) => {
+  cache.categories = snap.val() || {};
+  ready.categories = true;
+  notify();
+}, (err) => console.error("[Store] categories read failed", err));
 
-function saveState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
+onValue(ref(db, "cards"), (snap) => {
+  cache.cards = snap.val() || {};
+  ready.cards = true;
+  notify();
+}, (err) => console.error("[Store] cards read failed", err));
 
-/* ----------------------------------------------------------------------------
- * LocalStore – default implementation
- * -------------------------------------------------------------------------- */
+/* ---------- public API ---------- */
 
-const LocalStore = (() => {
-  let state = loadState();
-  const listeners = new Set();
+const Store = {
+  isReady() { return ready.categories && ready.cards; },
 
-  function commit() {
-    saveState(state);
-    listeners.forEach((cb) => {
-      try { cb(state); } catch (err) { console.error(err); }
-    });
-  }
-
-  return {
-    async getCategories() {
-      return state.categories.slice().sort((a, b) => a.createdAt - b.createdAt);
-    },
-
-    async getCategory(id) {
-      return state.categories.find((c) => c.id === id) || null;
-    },
-
-    async addCategory(name, color) {
-      const cat = {
-        id: uid("cat"),
-        name: name.trim() || "Neue Box",
-        color: color || "#8b5cf6",
-        createdAt: Date.now(),
-      };
-      state.categories.push(cat);
-      commit();
-      return cat;
-    },
-
-    async updateCategory(id, patch) {
-      const cat = state.categories.find((c) => c.id === id);
-      if (!cat) return null;
-      Object.assign(cat, patch);
-      commit();
-      return cat;
-    },
-
-    async deleteCategory(id) {
-      state.categories = state.categories.filter((c) => c.id !== id);
-      state.cards = state.cards.filter((c) => c.categoryId !== id);
-      commit();
-    },
-
-    async getCards(categoryId) {
-      const list = categoryId
-        ? state.cards.filter((c) => c.categoryId === categoryId)
-        : state.cards.slice();
-      return list.sort((a, b) => a.createdAt - b.createdAt);
-    },
-
-    async getCard(id) {
-      return state.cards.find((c) => c.id === id) || null;
-    },
-
-    async addCard(categoryId, front, back) {
-      const card = {
-        id: uid("card"),
-        categoryId,
-        front: (front || "").trim(),
-        back: (back || "").trim(),
-        progress: { seen: 0, correct: 0, wrong: 0, lastReviewed: null },
-        createdAt: Date.now(),
-      };
-      state.cards.push(card);
-      commit();
-      return card;
-    },
-
-    async updateCard(id, patch) {
-      const card = state.cards.find((c) => c.id === id);
-      if (!card) return null;
-      Object.assign(card, patch);
-      commit();
-      return card;
-    },
-
-    async deleteCard(id) {
-      state.cards = state.cards.filter((c) => c.id !== id);
-      commit();
-    },
-
-    async recordAnswer(cardId, correct) {
-      const card = state.cards.find((c) => c.id === cardId);
-      if (!card) return null;
-      card.progress.seen += 1;
-      if (correct) card.progress.correct += 1;
-      else card.progress.wrong += 1;
-      card.progress.lastReviewed = Date.now();
-      commit();
-      return card;
-    },
-
-    subscribe(callback) {
-      listeners.add(callback);
-      return () => listeners.delete(callback);
-    },
-  };
-})();
-
-/* ----------------------------------------------------------------------------
- * FirebaseStore – stub. Same signatures, empty bodies.
- *
- * Once Firebase is wired up, implement these using
- *   firebase.database().ref('categories'), .ref('cards'), etc.
- * and replace the export at the bottom of this file.
- * -------------------------------------------------------------------------- */
-
-/* eslint-disable no-unused-vars */
-const FirebaseStore = {
   async getCategories() {
-    // const snap = await firebase.database().ref('categories').once('value');
-    // return Object.values(snap.val() || {});
-    throw new Error("FirebaseStore not yet implemented");
+    return Object.values(cache.categories).sort((a, b) => a.createdAt - b.createdAt);
   },
-  async getCategory(id) { throw new Error("FirebaseStore not yet implemented"); },
-  async addCategory(name, color) { throw new Error("FirebaseStore not yet implemented"); },
-  async updateCategory(id, patch) { throw new Error("FirebaseStore not yet implemented"); },
-  async deleteCategory(id) { throw new Error("FirebaseStore not yet implemented"); },
-  async getCards(categoryId) { throw new Error("FirebaseStore not yet implemented"); },
-  async getCard(id) { throw new Error("FirebaseStore not yet implemented"); },
-  async addCard(categoryId, front, back) { throw new Error("FirebaseStore not yet implemented"); },
-  async updateCard(id, patch) { throw new Error("FirebaseStore not yet implemented"); },
-  async deleteCard(id) { throw new Error("FirebaseStore not yet implemented"); },
-  async recordAnswer(cardId, correct) { throw new Error("FirebaseStore not yet implemented"); },
+
+  async getCategory(id) {
+    return cache.categories[id] || null;
+  },
+
+  async addCategory(name, color) {
+    const cat = {
+      id: uid("cat"),
+      name: (name || "").trim() || "Neue Box",
+      color: color || "#8b5cf6",
+      createdAt: Date.now(),
+    };
+    cache.categories[cat.id] = cat;
+    notify();
+    await set(ref(db, `categories/${cat.id}`), cat);
+    return cat;
+  },
+
+  async updateCategory(id, patch) {
+    const current = cache.categories[id];
+    if (!current) return null;
+    const next = { ...current, ...patch };
+    cache.categories[id] = next;
+    notify();
+    await update(ref(db, `categories/${id}`), patch);
+    return next;
+  },
+
+  async deleteCategory(id) {
+    const updates = {};
+    updates[`categories/${id}`] = null;
+    Object.values(cache.cards).forEach((card) => {
+      if (card.categoryId === id) updates[`cards/${card.id}`] = null;
+    });
+    delete cache.categories[id];
+    Object.keys(cache.cards).forEach((k) => {
+      if (cache.cards[k].categoryId === id) delete cache.cards[k];
+    });
+    notify();
+    await update(ref(db), updates);
+  },
+
+  async getCards(categoryId) {
+    const all = Object.values(cache.cards);
+    const list = categoryId ? all.filter((c) => c.categoryId === categoryId) : all;
+    return list.sort((a, b) => a.createdAt - b.createdAt);
+  },
+
+  async getCard(id) {
+    return cache.cards[id] || null;
+  },
+
+  async addCard(categoryId, front, back) {
+    const card = {
+      id: uid("card"),
+      categoryId,
+      front: (front || "").trim(),
+      back: (back || "").trim(),
+      progress: { seen: 0, correct: 0, wrong: 0, lastReviewed: 0 },
+      createdAt: Date.now(),
+    };
+    cache.cards[card.id] = card;
+    notify();
+    await set(ref(db, `cards/${card.id}`), card);
+    return card;
+  },
+
+  async updateCard(id, patch) {
+    const current = cache.cards[id];
+    if (!current) return null;
+    const next = { ...current, ...patch };
+    cache.cards[id] = next;
+    notify();
+    await update(ref(db, `cards/${id}`), patch);
+    return next;
+  },
+
+  async deleteCard(id) {
+    delete cache.cards[id];
+    notify();
+    await remove(ref(db, `cards/${id}`));
+  },
+
+  async recordAnswer(cardId, correct) {
+    const card = cache.cards[cardId];
+    if (!card) return null;
+    const progress = {
+      seen:    (card.progress?.seen    || 0) + 1,
+      correct: (card.progress?.correct || 0) + (correct ? 1 : 0),
+      wrong:   (card.progress?.wrong   || 0) + (correct ? 0 : 1),
+      lastReviewed: Date.now(),
+    };
+    cache.cards[cardId] = { ...card, progress };
+    notify();
+    await update(ref(db, `cards/${cardId}/progress`), progress);
+    return cache.cards[cardId];
+  },
+
   subscribe(callback) {
-    // const ref = firebase.database().ref('/');
-    // const handler = (snap) => callback(snap.val());
-    // ref.on('value', handler);
-    // return () => ref.off('value', handler);
-    return () => {};
+    listeners.add(callback);
+    return () => listeners.delete(callback);
   },
 };
-/* eslint-enable no-unused-vars */
 
-/* ----------------------------------------------------------------------------
- * Export the active store. Switch the assignment when Firebase is ready.
- * -------------------------------------------------------------------------- */
-
-window.Store = LocalStore;
-// window.Store = FirebaseStore;
+window.Store = Store;
+export default Store;

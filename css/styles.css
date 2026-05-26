@@ -420,6 +420,7 @@ body {
   padding: 20px;
   animation: fade-in 180ms ease;
 }
+.modal[hidden] { display: none; }
 .modal-backdrop {
   position: absolute;
   inset: 0;

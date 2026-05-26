@@ -494,10 +494,24 @@
   }
 
   /* ---------- Boot ---------- */
+  let rerenderScheduled = false;
+  function scheduleRerender() {
+    if (rerenderScheduled) return;
+    rerenderScheduled = true;
+    requestAnimationFrame(() => {
+      rerenderScheduled = false;
+      if (state.view === "boxes") renderBoxes();
+      else if (state.view === "cards") renderCards();
+    });
+  }
+
   function init() {
     bindEvents();
     setView("boxes");
     renderBoxes();
+    if (window.Store && typeof window.Store.subscribe === "function") {
+      window.Store.subscribe(scheduleRerender);
+    }
   }
 
   if (document.readyState === "loading") {
