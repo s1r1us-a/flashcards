@@ -208,7 +208,9 @@
     $("#box-name").value = name;
     renderSwatches();
     $("#modal-box").hidden = false;
-    setTimeout(() => $("#box-name").focus(), 50);
+    if (!matchMedia("(pointer: coarse)").matches) {
+      setTimeout(() => $("#box-name").focus(), 50);
+    }
   }
 
   async function openCardModal(editId) {
@@ -227,7 +229,9 @@
     $("#card-front").value = front;
     $("#card-back").value = back;
     $("#modal-card").hidden = false;
-    setTimeout(() => $("#card-front").focus(), 50);
+    if (!matchMedia("(pointer: coarse)").matches) {
+      setTimeout(() => $("#card-front").focus(), 50);
+    }
   }
 
   function closeModals() {
