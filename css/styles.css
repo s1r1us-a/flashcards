@@ -817,6 +817,55 @@ body {
 }
 
 /* =========================================================================
+   Offline-Banner – erscheint, wenn Browser oder Firebase offline sind.
+   ========================================================================= */
+
+.offline-banner {
+  position: fixed;
+  top: env(safe-area-inset-top, 0);
+  left: 0;
+  right: 0;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: rgba(220, 38, 38, 0.18);
+  border-bottom: 1px solid rgba(220, 38, 38, 0.45);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #fee2e2;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: center;
+  animation: offline-slide-in 220ms ease-out;
+}
+.offline-banner[hidden] { display: none; }
+.offline-banner-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f87171;
+  box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.18);
+  animation: offline-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.offline-banner-text { line-height: 1.35; }
+@keyframes offline-slide-in {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes offline-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.18); }
+  50%      { opacity: 0.6; box-shadow: 0 0 0 8px rgba(248, 113, 113, 0); }
+}
+@media (max-width: 640px) {
+  .offline-banner { padding: 8px 12px; font-size: 12.5px; }
+}
+
+/* =========================================================================
    Auth view
    ========================================================================= */
 

@@ -39,12 +39,31 @@
       .replace(/'/g, "&#039;");
   }
 
+  // Mini-Queue: schnelle Folgenachrichten würden sich sonst gegenseitig überschreiben,
+  // bevor der User sie lesen kann. FIFO mit kurzer Pause zwischen den Einträgen.
+  const TOAST_SHOW_MS = 1800;
+  const TOAST_GAP_MS  = 150;
   function showToast(msg) {
+    (showToast._q = showToast._q || []).push(String(msg));
+    if (!showToast._running) drainToastQueue();
+  }
+  function drainToastQueue() {
+    const queue = showToast._q || [];
+    if (queue.length === 0) { showToast._running = false; return; }
     const el = $("#toast");
-    el.textContent = msg;
+    if (!el) {
+      // DOM noch nicht bereit – kurz warten, Queue NICHT konsumieren.
+      showToast._running = true;
+      setTimeout(drainToastQueue, 100);
+      return;
+    }
+    showToast._running = true;
+    el.textContent = queue.shift();
     el.hidden = false;
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => { el.hidden = true; }, 2200);
+    setTimeout(() => {
+      el.hidden = true;
+      setTimeout(drainToastQueue, TOAST_GAP_MS);
+    }, TOAST_SHOW_MS);
   }
 
   function formatDate(ts) {
@@ -337,8 +356,12 @@
     const empty = $("#community-empty");
     const all = Store.getAllUsers()
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    // Empty-State zeigt sich, wenn außer mir niemand registriert ist.
+    // Explizit self herausfiltern statt `length <= 1` – robuster gegen
+    // Cache-Edge-Cases (self noch nicht im users-Snapshot).
+    const others = all.filter((u) => u.uid !== me.uid);
 
-    if (all.length <= 1) {
+    if (others.length === 0) {
       list.innerHTML = "";
       empty.hidden = false;
       return;
@@ -1240,7 +1263,9 @@
     $("#study-front").textContent = card.front || "—";
     $("#study-back").textContent  = card.back  || "—";
     $("#study-count").textContent = `${index + 1} / ${total}`;
-    $("#study-progress").style.width = `${(index / total) * 100}%`;
+    // Bar zeigt die Position der aktuell sichtbaren Karte (1/n … n/n),
+    // konsistent mit dem `${index+1} / ${total}`-Label direkt darüber.
+    $("#study-progress").style.width = `${((index + 1) / total) * 100}%`;
 
     const flip = $("#flipcard");
     flip.classList.toggle("flipped", revealed);
@@ -1251,12 +1276,19 @@
 
   async function answerStudy(correct) {
     if (!state.study.revealed) return;
+    // Bounds-Guard: falls der globale cards-Listener während des Lernens feuert
+    // (z. B. weil ein zweiter Tab eine Karte löscht), kann der Index ins Leere zeigen.
     const card = state.study.deck[state.study.index];
+    if (!card) { finishStudy(); return; }
+
     try {
       await Store.recordAnswer(card.id, correct);
     } catch (err) {
-      // weiter, auch wenn Speichern fehlschlug
+      // Speichern fehlgeschlagen: Index NICHT erhöhen, Karte bleibt aktiv,
+      // damit der User es nach Reconnect erneut versuchen kann.
       console.error(err);
+      showToast(err.message || "Antwort konnte nicht gespeichert werden");
+      return;
     }
     if (correct) state.study.correct += 1;
     else state.study.wrong += 1;
@@ -1728,11 +1760,42 @@
     }
   }
 
+  /* ---------- Offline-Banner ---------- */
+  // Zwei Signale: Browser (navigator.onLine) und Firebase (.info/connected).
+  // Banner zeigt sich, sobald eines davon "offline" meldet. Firebase wird
+  // initial mit kurzer Verzögerung berücksichtigt, weil .info/connected beim
+  // ersten Seitenaufruf typischerweise einige hundert ms auf false steht,
+  // bevor der WebSocket verbunden ist — wir wollen kein Banner-Flicker.
+  const offlineState = { browser: true, firebase: true, firebaseReady: false };
+  function updateOfflineBanner() {
+    const el = $("#offline-banner");
+    if (!el) return;
+    const offline = !offlineState.browser
+      || (offlineState.firebaseReady && !offlineState.firebase);
+    el.hidden = !offline;
+  }
+  function bindConnectionStatus() {
+    offlineState.browser = navigator.onLine !== false;
+    window.addEventListener("online",  () => { offlineState.browser = true;  updateOfflineBanner(); });
+    window.addEventListener("offline", () => { offlineState.browser = false; updateOfflineBanner(); });
+    if (window.Store && typeof window.Store.subscribeConnection === "function") {
+      // Erst nach 2 s den Firebase-Status berücksichtigen – verhindert den
+      // initialen "kurz offline"-Flash beim Seitenaufruf.
+      setTimeout(() => { offlineState.firebaseReady = true; updateOfflineBanner(); }, 2000);
+      window.Store.subscribeConnection((connected) => {
+        offlineState.firebase = connected;
+        updateOfflineBanner();
+      });
+    }
+    updateOfflineBanner();
+  }
+
   async function init() {
     closeModals();
     bindEvents();
     renderAuth();
     if (!window.Store) return;
+    bindConnectionStatus();
     // Warte einmalig auf den ersten Firebase-Auth-State-Check, bevor wir eine
     // View zeigen – sonst blitzt beim Reload kurz die Login-Seite auf, bevor
     // die gespeicherte Session erkannt wird.
