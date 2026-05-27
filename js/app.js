@@ -207,9 +207,7 @@
 
     $("#box-name").value = name;
     renderSwatches();
-    const m = $("#modal-box");
-    m.hidden = false;
-    m.style.display = "";
+    $("#modal-box").classList.add("is-open");
     if (!matchMedia("(pointer: coarse)").matches) {
       setTimeout(() => $("#box-name").focus(), 50);
     }
@@ -230,21 +228,15 @@
 
     $("#card-front").value = front;
     $("#card-back").value = back;
-    const m = $("#modal-card");
-    m.hidden = false;
-    m.style.display = "";
+    $("#modal-card").classList.add("is-open");
     if (!matchMedia("(pointer: coarse)").matches) {
       setTimeout(() => $("#card-front").focus(), 50);
     }
   }
 
   function closeModals() {
-    const mb = $("#modal-box");
-    const mc = $("#modal-card");
-    mb.hidden = true;
-    mc.hidden = true;
-    mb.style.display = "none";
-    mc.style.display = "none";
+    $("#modal-box").classList.remove("is-open");
+    $("#modal-card").classList.remove("is-open");
     state.modal.type = null;
     state.modal.editingId = null;
   }
@@ -491,7 +483,8 @@
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
-        if (!$("#modal-box").hidden || !$("#modal-card").hidden) closeModals();
+        if ($("#modal-box").classList.contains("is-open") ||
+            $("#modal-card").classList.contains("is-open")) closeModals();
       }
       if (state.view === "study" && state.study.revealed) {
         if (e.key === "ArrowLeft" || e.key === "1") answerStudy(false);
