@@ -95,31 +95,37 @@ function markAuthReady() {
   _authReadyResolve();
 }
 
-/* ---------- globale Listener (lesen für alle erlaubt) ---------- */
+/* ---------- globale Listener (lesen für alle erlaubt, aber Rules verlangen auth) ---------- */
 
-onValue(ref(db, "categories"), (snap) => {
-  cache.categories = snap.val() || {};
-  notify();
-}, (err) => console.error("[Store] categories read failed", err));
+let globalListenersAttached = false;
+function attachGlobalListeners() {
+  if (globalListenersAttached) return;
+  globalListenersAttached = true;
 
-onValue(ref(db, "cards"), (snap) => {
-  cache.cards = snap.val() || {};
-  notify();
-}, (err) => console.error("[Store] cards read failed", err));
+  onValue(ref(db, "categories"), (snap) => {
+    cache.categories = snap.val() || {};
+    notify();
+  }, (err) => console.error("[Store] categories read failed", err));
 
-onValue(ref(db, "users"), (snap) => {
-  cache.users = snap.val() || {};
-  // Wenn der eigene displayName erst nach dem Auth-State-Change in die DB geschrieben
-  // wurde (z.B. direkt nach der Registrierung), holen wir ihn jetzt nach.
-  if (currentUser) {
-    const dbName = cache.users[currentUser.uid] && cache.users[currentUser.uid].displayName;
-    if (dbName && dbName !== currentUser.displayName) {
-      currentUser = { ...currentUser, displayName: dbName };
-      notifyAuth();
+  onValue(ref(db, "cards"), (snap) => {
+    cache.cards = snap.val() || {};
+    notify();
+  }, (err) => console.error("[Store] cards read failed", err));
+
+  onValue(ref(db, "users"), (snap) => {
+    cache.users = snap.val() || {};
+    // Wenn der eigene displayName erst nach dem Auth-State-Change in die DB geschrieben
+    // wurde (z.B. direkt nach der Registrierung), holen wir ihn jetzt nach.
+    if (currentUser) {
+      const dbName = cache.users[currentUser.uid] && cache.users[currentUser.uid].displayName;
+      if (dbName && dbName !== currentUser.displayName) {
+        currentUser = { ...currentUser, displayName: dbName };
+        notifyAuth();
+      }
     }
-  }
-  notify();
-}, (err) => console.error("[Store] users read failed", err));
+    notify();
+  }, (err) => console.error("[Store] users read failed", err));
+}
 
 /* ---------- Auth-State + user-scoped Listener ---------- */
 
@@ -159,6 +165,10 @@ onAuthStateChanged(auth, (user) => {
       email: user.email,
       displayName: dbName || user.displayName || (user.email || "").split("@")[0],
     };
+    // Globale Listener erst NACH dem ersten Auth attachen — sonst werden sie mit
+    // permission_denied stillgelegt (passiert bei frischen Sessions/Sign-ups,
+    // wenn die LocalStorage-Auth-Persistenz noch keinen User wiederhergestellt hat).
+    attachGlobalListeners();
     attachUserListeners(user.uid);
   } else {
     currentUser = null;
