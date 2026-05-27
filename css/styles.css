@@ -1341,6 +1341,118 @@ body {
 }
 
 /* =========================================================================
+   Box-Stats-Banner & Collapsible Karten-Liste
+   ========================================================================= */
+
+.box-stats-banner {
+  position: relative;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+.box-stats-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--tile-color, var(--accent)) 0%, transparent 70%);
+  opacity: 0.12;
+  pointer-events: none;
+}
+.box-stats-banner > * { position: relative; }
+.box-stats-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.box-stats-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+.box-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+.box-stats-cell {
+  padding: 12px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  text-align: center;
+}
+.box-stats-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.box-stats-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+.box-stats-banner .muted.small { margin-top: 12px; }
+
+.cards-toggle { margin-bottom: 14px; }
+.cards-collapsible.is-collapsed { display: none; }
+
+/* Anzeigename-Edit-Form */
+.account-info-text {
+  min-width: 0;
+  flex: 1;
+}
+.account-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.account-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edit-name-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.edit-name-form .input {
+  flex: 1;
+  min-width: 140px;
+  font-size: 15px;
+  padding: 8px 12px;
+}
+
+/* Klickbare Community-Zeile */
+.user-list-row.is-clickable {
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast), transform var(--t-fast);
+}
+.user-list-row.is-clickable:hover,
+.user-list-row.is-clickable:focus-visible {
+  border-color: var(--glass-border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  outline: none;
+}
+.user-list-row.is-clickable:active { transform: scale(0.995); }
+
+/* Read-only Profil: Cursor-Defaults */
+.profile-view.is-readonly .mastery-row,
+.profile-view.is-readonly .hardest-row { cursor: default; }
+
+/* =========================================================================
    Responsive
    ========================================================================= */
 

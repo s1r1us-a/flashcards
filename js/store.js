@@ -204,6 +204,94 @@ function computeCurrentStreak(progressMap) {
 
 /* ---------- Profil-Statistiken ---------- */
 
+// Öffentlich sichtbare Stats — funktioniert für jede uid, nutzt nur globale Daten
+// (users, categories). Kein Zugriff auf userProgress/userLibrary (privat).
+function buildPublicProfileStats(uid) {
+  const userRecord = cache.users[uid];
+  if (!userRecord) return null;
+
+  const isMe = currentUser && currentUser.uid === uid;
+  const cats = Object.values(cache.categories);
+  const myOwn = cats.filter((c) => c && c.ownerId === uid);
+
+  const published = myOwn.filter((c) => c.published);
+  const totalInstalls = published.reduce((sum, c) => sum + (c.installCount || 0), 0);
+  let mostInstalledBox = null;
+  published.forEach((c) => {
+    if (!mostInstalledBox || (c.installCount || 0) > (mostInstalledBox.installCount || 0)) {
+      mostInstalledBox = c;
+    }
+  });
+
+  return {
+    user: {
+      uid,
+      displayName: userRecord.displayName
+        || (isMe && currentUser.displayName)
+        || "Unbekannt",
+      email: isMe ? currentUser.email : null,
+      createdAt: userRecord.createdAt || null,
+      longestStreak: userRecord.longestStreak || 0,
+    },
+    library: {
+      ownCount: myOwn.length,
+      publishedCount: published.length,
+    },
+    community: {
+      publishedCount: published.length,
+      totalInstalls,
+      mostInstalledBox,
+    },
+  };
+}
+
+// Per-box Stats für den aktuell eingeloggten User. Greift auf userProgress zu
+// (nur für die eigene uid erlaubt). Wird im Box-Detail-View für das Banner genutzt.
+function buildBoxStatsForCurrentUser(categoryId) {
+  if (!currentUser) return null;
+  const cat = cache.categories[categoryId];
+  if (!cat) return null;
+
+  const cards = Object.values(cache.cards)
+    .filter((c) => c && c.categoryId === categoryId);
+  const now = Date.now();
+
+  let seen = 0, correct = 0, wrong = 0;
+  let dueCount = 0, newCount = 0;
+  let easeSum = 0, easeCount = 0;
+  let accCardCount = 0, accSum = 0;
+  let lastReviewed = 0;
+
+  cards.forEach((card) => {
+    const p = progressWithDefaults(cache.userProgress[card.id]);
+    seen += p.seen; correct += p.correct; wrong += p.wrong;
+    if (p.seen === 0) newCount += 1;
+    else if (p.dueAt <= now) dueCount += 1;
+    if (p.seen >= 1) { easeSum += p.ease; easeCount += 1; }
+    if (p.seen >= 3) { accCardCount += 1; accSum += p.correct / p.seen; }
+    if (p.lastReviewed > lastReviewed) lastReviewed = p.lastReviewed;
+  });
+
+  const avgAccuracy = accCardCount ? accSum / accCardCount : null;
+  const coverage = cards.length ? accCardCount / cards.length : 0;
+  const masteryScore = avgAccuracy !== null ? avgAccuracy * coverage : null;
+  const overallAccuracy = seen ? correct / seen : null;
+
+  return {
+    cardCount: cards.length,
+    seenCount: seen,
+    correctCount: correct,
+    wrongCount: wrong,
+    dueCount,
+    newCount,
+    overallAccuracy,
+    avgAccuracy,
+    avgEase: easeCount ? easeSum / easeCount : null,
+    masteryScore,
+    lastReviewed: lastReviewed || null,
+  };
+}
+
 function buildProfileStats() {
   if (!currentUser) return null;
   const me = cache.users[currentUser.uid] || {};
@@ -762,6 +850,33 @@ const Store = {
   /* --- Profil --- */
   async getProfileStats() {
     return buildProfileStats();
+  },
+
+  async getPublicProfileStats(uid) {
+    return buildPublicProfileStats(uid);
+  },
+
+  async getBoxStats(categoryId) {
+    return buildBoxStatsForCurrentUser(categoryId);
+  },
+
+  async updateDisplayName(newName) {
+    const user = requireUser();
+    const n = String(newName == null ? "" : newName).trim();
+    if (!n) throw new Error("Anzeigename darf nicht leer sein");
+    if (n.length > 40) throw new Error("Anzeigename ist zu lang (max. 40 Zeichen)");
+    if (cache.users[user.uid] && cache.users[user.uid].displayName === n) {
+      return n; // nichts zu tun
+    }
+    await update(ref(db, `users/${user.uid}`), { displayName: n });
+    currentUser = { ...currentUser, displayName: n };
+    if (cache.users[user.uid]) {
+      cache.users[user.uid] = { ...cache.users[user.uid], displayName: n };
+    }
+    try { await updateProfile(auth.currentUser, { displayName: n }); } catch (e) {}
+    notifyAuth();
+    notify();
+    return n;
   },
 
   getUser(uid) { return cache.users[uid] || null; },
