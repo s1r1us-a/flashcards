@@ -1215,6 +1215,38 @@ body {
 }
 .mastery-meta { margin-top: 6px; }
 
+/* Community-Liste */
+.user-list { display: flex; flex-direction: column; gap: 10px; }
+.user-list-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--glass-border);
+}
+.user-list-row .avatar { width: 44px; height: 44px; font-size: 18px; }
+.user-list-info { flex: 1; min-width: 0; }
+.user-list-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-list-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.badge.is-me {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border: 0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
 /* Schwierigste Karten */
 .hardest-list { display: flex; flex-direction: column; gap: 10px; }
 .hardest-row {
@@ -1315,7 +1347,9 @@ body {
 @media (max-width: 640px) {
   .topbar { padding: 12px 16px; gap: 10px; }
   .main-nav { margin-left: 0; width: 100%; order: 3; justify-content: center; }
-  .nav-tab { flex: 1; text-align: center; padding: 8px 10px; font-size: 13px; }
+  .nav-tab { flex: 1; text-align: center; padding: 8px 6px; font-size: 12px; min-width: 0; }
+  .user-list-row { padding: 10px 12px; gap: 10px; }
+  .user-list-row .avatar { width: 38px; height: 38px; font-size: 16px; }
   .user-area { margin-left: auto; }
   .user-name { display: none; }
   .app { padding: 24px 18px 60px; }
