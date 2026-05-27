@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0" />
   <meta name="theme-color" content="#0f0c29" />
   <title>Flashcards – Karteikarten</title>
-  <link rel="stylesheet" href="css/styles.css?v=6" />
+  <link rel="stylesheet" href="css/styles.css?v=7" />
 </head>
 <body>
   <div class="bg-orbs" aria-hidden="true">
@@ -130,6 +130,7 @@
           <p class="muted" id="box-meta">0 Karten</p>
           <div class="box-author" id="box-author" hidden></div>
           <p class="box-description" id="box-description" hidden></p>
+          <p class="muted small" id="box-modified" hidden></p>
         </div>
         <div class="view-actions">
           <input class="input search" id="search-cards" type="search" placeholder="Karten durchsuchen…" />
@@ -250,10 +251,50 @@
     </div>
   </div>
 
+  <!-- Modal: Confirm (generisch) -->
+  <div class="modal" id="modal-confirm">
+    <div class="modal-backdrop" data-action="confirm-cancel"></div>
+    <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Bestätigen</h2>
+      <p class="muted" id="confirm-message"></p>
+      <div class="modal-actions">
+        <button class="btn ghost" data-action="confirm-cancel" id="confirm-cancel-btn">Abbrechen</button>
+        <button class="btn primary" data-action="confirm-ok" id="confirm-ok-btn">Bestätigen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Import -->
+  <div class="modal" id="modal-import">
+    <div class="modal-backdrop" data-action="close-modal"></div>
+    <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="modal-import-title">
+      <h2 id="modal-import-title">Karten importieren</h2>
+      <p class="muted">Eine Karte pro Zeile. Vorder- und Rückseite trennst du mit Tab, Semikolon oder Komma. Anführungszeichen <code>"..."</code> erlauben Trennzeichen im Text.</p>
+      <label class="field">
+        <span>Trennzeichen</span>
+        <select class="input" id="import-delimiter">
+          <option value="auto">Automatisch erkennen</option>
+          <option value="	">Tab</option>
+          <option value=";">Semikolon</option>
+          <option value=",">Komma</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Karten (CSV/TSV)</span>
+        <textarea class="input" id="import-text" rows="10" placeholder="Hallo;hello&#10;Welt;world&#10;&quot;Guten Tag, Welt&quot;;hello world"></textarea>
+      </label>
+      <div class="import-preview" id="import-preview"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" data-action="close-modal">Abbrechen</button>
+        <button class="btn primary" data-action="import-submit" id="import-submit-btn">Importieren</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast" hidden></div>
 
-  <script type="module" src="js/store.js?v=5"></script>
-  <script type="module" src="js/app.js?v=5"></script>
+  <script type="module" src="js/store.js?v=6"></script>
+  <script type="module" src="js/app.js?v=6"></script>
 </body>
 </html>
