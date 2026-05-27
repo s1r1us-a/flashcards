@@ -419,7 +419,7 @@ body {
 /* Card list-item */
 .card-item {
   position: relative;
-  padding: 20px;
+  padding: 36px 20px 20px;
   border-radius: var(--radius-md);
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -1209,7 +1209,7 @@ body {
   border-color: rgba(16, 185, 129, 0.45);
   color: #a7f3d0;
 }
-.card-item .badge { position: absolute; top: 12px; left: 12px; }
+.card-item .badge { position: absolute; top: 12px; left: 20px; margin-left: 0; }
 .srs-meta { margin-left: 6px; }
 
 /* Profile-Highlight */
@@ -1530,7 +1530,7 @@ body {
   .modal { padding: 12px; align-items: flex-start; }
   .modal-card { padding: 20px; max-height: calc(100dvh - 24px); }
   .modal-card h2 { margin-bottom: 14px; font-size: 20px; }
-  .modal-actions { position: sticky; bottom: 0; background: var(--glass-bg-strong); margin: 8px -20px -20px; padding: 12px 20px; border-top: 1px solid var(--glass-border); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+  .modal-actions { position: sticky; bottom: 0; background: rgba(20, 16, 46, 0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); margin: 8px -20px -20px; padding: 12px 20px; border-top: 1px solid var(--glass-border); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
