@@ -22,56 +22,58 @@
       <span class="brand-icon">◆</span>
       <span class="brand-name">Flashcards</span>
     </button>
-    <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+    <nav class="main-nav" id="main-nav" hidden>
+      <button class="nav-tab" data-action="goto-boxes">Bibliothek</button>
+      <button class="nav-tab" data-action="goto-shop">Shop</button>
+      <button class="nav-tab" data-action="goto-profile">Profil</button>
+    </nav>
     <div class="user-area" id="user-area" hidden>
-      <span class="user-chip" id="user-email"></span>
+      <span class="user-name" id="user-name"></span>
       <button class="btn ghost btn-sm" data-action="logout">Abmelden</button>
     </div>
+    <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
   </header>
 
   <main id="app" class="app">
-    <!-- VIEW: Auth -->
+    <!-- VIEW: Authentication -->
     <section class="view auth-view" data-view="auth" hidden>
       <div class="auth-card glass">
-        <div class="auth-head">
-          <div class="auth-icon">◆</div>
-          <h1 id="auth-title">Anmelden</h1>
-          <p class="muted" id="auth-subtitle">Willkommen zurück bei Flashcards.</p>
+        <div class="auth-brand">
+          <span class="brand-icon">◆</span>
+          <h1>Flashcards</h1>
+          <p class="muted">Lerne mit eigenen Karteikarten – und teile deine Boxen mit anderen.</p>
         </div>
 
-        <label class="field">
-          <span>Email</span>
-          <input class="input" id="auth-email" type="email" autocomplete="email" placeholder="du@beispiel.de" />
-        </label>
-
-        <label class="field" id="auth-password-field">
-          <span>Passwort</span>
-          <input class="input" id="auth-password" type="password" autocomplete="current-password" placeholder="••••••••" />
-        </label>
-
-        <label class="field" id="auth-password2-field" hidden>
-          <span>Passwort bestätigen</span>
-          <input class="input" id="auth-password2" type="password" autocomplete="new-password" placeholder="••••••••" />
-        </label>
-
-        <div class="auth-error" id="auth-error" hidden></div>
-
-        <button class="btn primary auth-submit" id="auth-submit" data-action="auth-submit">Anmelden</button>
-
-        <div class="auth-links" id="auth-links">
-          <a href="#" data-action="auth-switch-mode" data-mode="reset">Passwort vergessen?</a>
-          <span class="auth-sep">·</span>
-          <a href="#" data-action="auth-switch-mode" data-mode="register">Account erstellen</a>
+        <div class="auth-tabs" id="auth-tabs">
+          <button class="auth-tab is-active" data-action="auth-switch" data-mode="login">Anmelden</button>
+          <button class="auth-tab" data-action="auth-switch" data-mode="register">Registrieren</button>
         </div>
+
+        <form id="auth-form" autocomplete="on" novalidate>
+          <label class="field" id="auth-name-field" hidden>
+            <span>Anzeigename</span>
+            <input class="input" id="auth-name" type="text" placeholder="Wie sollen wir dich nennen?" maxlength="40" autocomplete="nickname" />
+          </label>
+          <label class="field">
+            <span>E-Mail</span>
+            <input class="input" id="auth-email" type="email" placeholder="du@example.com" autocomplete="email" required />
+          </label>
+          <label class="field">
+            <span>Passwort</span>
+            <input class="input" id="auth-password" type="password" placeholder="mindestens 6 Zeichen" minlength="6" autocomplete="current-password" required />
+          </label>
+          <p class="auth-error" id="auth-error" hidden></p>
+          <button class="btn primary auth-submit" type="submit" data-action="auth-submit" id="auth-submit-btn">Anmelden</button>
+        </form>
       </div>
     </section>
 
-    <!-- VIEW: Box overview -->
+    <!-- VIEW: Box overview (Bibliothek) -->
     <section class="view" data-view="boxes" hidden>
       <div class="view-head">
         <div>
-          <h1>Deine Boxen</h1>
-          <p class="muted">Sammle deine Karteikarten in farbigen Themen-Boxen.</p>
+          <h1>Deine Bibliothek</h1>
+          <p class="muted">Eigene und aus dem Shop hinzugefügte Boxen.</p>
         </div>
         <div class="view-actions">
           <input class="input search" id="search-boxes" type="search" placeholder="Boxen durchsuchen…" />
@@ -81,10 +83,43 @@
       <div class="grid" id="boxes-grid"></div>
       <div class="empty" id="boxes-empty" hidden>
         <div class="empty-icon">📚</div>
-        <h2>Noch keine Boxen</h2>
-        <p class="muted">Lege deine erste Themen-Box an und beginne, Karten zu sammeln.</p>
-        <button class="btn primary" data-action="new-box">+ Erste Box erstellen</button>
+        <h2>Deine Bibliothek ist leer</h2>
+        <p class="muted">Lege deine erste Box an – oder stöbere im Shop nach Boxen anderer Nutzer.</p>
+        <div class="empty-actions">
+          <button class="btn primary" data-action="new-box">+ Erste Box erstellen</button>
+          <button class="btn ghost" data-action="goto-shop">Shop öffnen</button>
+        </div>
       </div>
+    </section>
+
+    <!-- VIEW: Shop -->
+    <section class="view" data-view="shop" hidden>
+      <div class="view-head">
+        <div>
+          <h1>Shop</h1>
+          <p class="muted">Veröffentlichte Boxen aller Nutzer – stöbern und der eigenen Bibliothek hinzufügen.</p>
+        </div>
+        <div class="view-actions">
+          <input class="input search" id="search-shop" type="search" placeholder="Boxen durchsuchen…" />
+        </div>
+      </div>
+      <div class="grid shop-grid" id="shop-grid"></div>
+      <div class="empty" id="shop-empty" hidden>
+        <div class="empty-icon">🛒</div>
+        <h2>Noch keine veröffentlichten Boxen</h2>
+        <p class="muted">Sei die/der Erste und veröffentliche eine eigene Box.</p>
+      </div>
+    </section>
+
+    <!-- VIEW: Profile / Statistics -->
+    <section class="view profile-view" data-view="profile" hidden>
+      <div class="view-head">
+        <div>
+          <h1>Dein Profil</h1>
+          <p class="muted">Persönliche Statistiken und Account-Übersicht.</p>
+        </div>
+      </div>
+      <div id="profile-content"></div>
     </section>
 
     <!-- VIEW: Box detail / cards -->
@@ -93,20 +128,17 @@
         <div>
           <h1 id="box-title">Box</h1>
           <p class="muted" id="box-meta">0 Karten</p>
+          <div class="box-author" id="box-author" hidden></div>
+          <p class="box-description" id="box-description" hidden></p>
         </div>
-        <div class="view-actions">
-          <input class="input search" id="search-cards" type="search" placeholder="Karten durchsuchen…" />
-          <button class="btn ghost" data-action="study-start">Lernen starten</button>
-          <button class="btn primary" data-action="new-card">+ Neue Karte</button>
-          <button class="btn icon" data-action="delete-box" title="Box löschen" aria-label="Box löschen">🗑</button>
-        </div>
+        <div class="view-actions" id="box-actions"></div>
       </div>
       <div class="grid cards-grid" id="cards-grid"></div>
       <div class="empty" id="cards-empty" hidden>
         <div class="empty-icon">🃏</div>
         <h2>Keine Karten in dieser Box</h2>
-        <p class="muted">Erstelle deine erste Karteikarte mit Frage und Antwort.</p>
-        <button class="btn primary" data-action="new-card">+ Erste Karte erstellen</button>
+        <p class="muted" id="cards-empty-text">Erstelle deine erste Karteikarte mit Frage und Antwort.</p>
+        <button class="btn primary" data-action="new-card" id="cards-empty-btn">+ Erste Karte erstellen</button>
       </div>
     </section>
 
@@ -197,10 +229,28 @@
     </div>
   </div>
 
+  <!-- Modal: Publish -->
+  <div class="modal" id="modal-publish">
+    <div class="modal-backdrop" data-action="close-modal"></div>
+    <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="modal-publish-title">
+      <h2 id="modal-publish-title">Box veröffentlichen</h2>
+      <p class="muted" id="publish-status-text">Andere Nutzer können diese Box im Shop sehen und ihrer Bibliothek hinzufügen.</p>
+      <label class="field">
+        <span>Beschreibung</span>
+        <textarea class="input" id="publish-description" rows="4" placeholder="Worum geht es in dieser Box? (z. B. Spanisch A1 Vokabeln)" maxlength="280"></textarea>
+      </label>
+      <div class="modal-actions" id="publish-actions">
+        <button class="btn ghost" data-action="close-modal">Abbrechen</button>
+        <button class="btn ghost" data-action="unpublish" id="unpublish-btn" hidden>Zurückziehen</button>
+        <button class="btn primary" data-action="publish-submit" id="publish-submit-btn">Veröffentlichen</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast" hidden></div>
 
-  <script type="module" src="js/store.js?v=6"></script>
-  <script type="module" src="js/app.js?v=6"></script>
+  <script type="module" src="js/store.js?v=5"></script>
+  <script type="module" src="js/app.js?v=5"></script>
 </body>
 </html>
