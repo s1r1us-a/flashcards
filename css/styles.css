@@ -713,6 +713,18 @@ body {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   text-align: center;
+  overflow: hidden;
+}
+/* Inhalt zur Mitte der Drehung ausblenden, damit die Rückseite nicht
+   durch die transluzente Vorderseite spoilert (backface-visibility ist
+   bei backdrop-filter in vielen Browsern unzuverlässig). */
+.flipcard-face > * {
+  transition: opacity 180ms ease-in-out;
+}
+.flipcard:not(.flipped) .flipcard-back > *,
+.flipcard.flipped .flipcard-front > * {
+  opacity: 0;
+  transition: opacity 120ms ease-in-out;
 }
 .flipcard-back {
   transform: rotateY(180deg);
