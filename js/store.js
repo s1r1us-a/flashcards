@@ -682,7 +682,7 @@ const Store = {
     if (!isOwnerOf(id)) throw new Error("Nur der Ersteller darf diese Box löschen");
     const cat = cache.categories[id];
     if (cat && cat.published) {
-      throw new Error("Diese Box ist im Shop veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst aus dem Shop.");
+      throw new Error("Diese Box ist unter Öffentlich veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst von dort.");
     }
     const updates = {};
     updates[`categories/${id}`] = null;

@@ -24,7 +24,7 @@
     </button>
     <nav class="main-nav" id="main-nav" hidden>
       <button class="nav-tab" data-action="goto-boxes">Bibliothek</button>
-      <button class="nav-tab" data-action="goto-shop">Shop</button>
+      <button class="nav-tab" data-action="goto-shop">Öffentlich</button>
       <button class="nav-tab" data-action="goto-community">Community</button>
       <button class="nav-tab" data-action="goto-profile">Profil</button>
     </nav>
@@ -74,7 +74,7 @@
       <div class="view-head">
         <div>
           <h1>Deine Bibliothek</h1>
-          <p class="muted">Eigene und aus dem Shop hinzugefügte Boxen.</p>
+          <p class="muted">Eigene und aus Öffentlich hinzugefügte Boxen.</p>
         </div>
         <div class="view-actions">
           <input class="input search" id="search-boxes" type="search" placeholder="Boxen durchsuchen…" />
@@ -85,19 +85,19 @@
       <div class="empty" id="boxes-empty" hidden>
         <div class="empty-icon">📚</div>
         <h2>Deine Bibliothek ist leer</h2>
-        <p class="muted">Lege deine erste Box an – oder stöbere im Shop nach Boxen anderer Nutzer.</p>
+        <p class="muted">Lege deine erste Box an – oder stöbere unter Öffentlich nach Boxen anderer Nutzer.</p>
         <div class="empty-actions">
           <button class="btn primary" data-action="new-box">+ Erste Box erstellen</button>
-          <button class="btn ghost" data-action="goto-shop">Shop öffnen</button>
+          <button class="btn ghost" data-action="goto-shop">Öffentlich öffnen</button>
         </div>
       </div>
     </section>
 
-    <!-- VIEW: Shop -->
+    <!-- VIEW: Öffentlich -->
     <section class="view" data-view="shop" hidden>
       <div class="view-head">
         <div>
-          <h1>Shop</h1>
+          <h1>Öffentlich</h1>
           <p class="muted">Veröffentlichte Boxen aller Nutzer – stöbern und der eigenen Bibliothek hinzufügen.</p>
         </div>
         <div class="view-actions">
@@ -273,7 +273,7 @@
     <div class="modal-backdrop" data-action="close-modal"></div>
     <div class="modal-card glass" role="dialog" aria-modal="true" aria-labelledby="modal-publish-title">
       <h2 id="modal-publish-title">Box veröffentlichen</h2>
-      <p class="muted" id="publish-status-text">Andere Nutzer können diese Box im Shop sehen und ihrer Bibliothek hinzufügen.</p>
+      <p class="muted" id="publish-status-text">Andere Nutzer können diese Box unter Öffentlich sehen und ihrer Bibliothek hinzufügen.</p>
       <label class="field">
         <span>Beschreibung</span>
         <textarea class="input" id="publish-description" rows="4" placeholder="Worum geht es in dieser Box? (z. B. Spanisch A1 Vokabeln)" maxlength="280"></textarea>
