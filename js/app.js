@@ -55,6 +55,16 @@
     return (u && u.displayName) || "Unbekannt";
   }
 
+  function dueLabel(progress) {
+    if (!progress || progress.seen === 0) return { text: "neu", cls: "is-new" };
+    const now = Date.now();
+    const diffMs = (progress.dueAt || 0) - now;
+    if (diffMs <= 0) return { text: "fällig", cls: "is-due" };
+    const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+    if (days <= 1) return { text: "morgen", cls: "is-soon" };
+    return { text: `in ${days} T.`, cls: "is-later" };
+  }
+
   /* ---------- View routing ---------- */
   function setView(name) {
     state.view = name;
@@ -182,27 +192,39 @@
     empty.hidden = true;
 
     const cards = await Store.getCards();
-    const countByCat = cards.reduce((acc, c) => {
-      acc[c.categoryId] = (acc[c.categoryId] || 0) + 1;
+    const cardsByCat = cards.reduce((acc, c) => {
+      (acc[c.categoryId] = acc[c.categoryId] || []).push(c);
       return acc;
     }, {});
 
+    const now = Date.now();
     const tiles = filtered.map((cat) => {
-      const count = countByCat[cat.id] || 0;
+      const list = cardsByCat[cat.id] || [];
+      const count = list.length;
+      const dueCount = list.filter((c) => c.progress.seen > 0 && (c.progress.dueAt || 0) <= now).length;
+      const newCount = list.filter((c) => c.progress.seen === 0).length;
       const isOwn = cat.ownerId === user.uid;
+      const canEdit = isOwn || cat.published === true;
       const linkedBadge = !isOwn
         ? `<div class="linked-badge" title="Verknüpfte Box">🔗 von ${escapeHtml(authorName(cat.ownerId))}</div>`
         : "";
       const publishedBadge = isOwn && cat.published
         ? `<div class="published-badge" title="Veröffentlicht">✓ veröffentlicht</div>`
         : "";
-      const editBtn = isOwn
+      const editBtn = canEdit
         ? `<button class="icon-btn" data-action="edit-box" data-id="${cat.id}"
                   aria-label="Box bearbeiten" title="Bearbeiten">✎</button>`
         : "";
       const publishBtn = isOwn
         ? `<button class="icon-btn" data-action="open-publish" data-id="${cat.id}"
                   aria-label="Veröffentlichen" title="Veröffentlichen">📤</button>`
+        : "";
+      const deleteBtn = isOwn
+        ? `<button class="icon-btn" data-action="delete-box" data-id="${cat.id}"
+                  aria-label="Box löschen" title="Löschen">🗑</button>`
+        : "";
+      const srsMeta = (dueCount || newCount)
+        ? `<span class="srs-meta">${dueCount ? `<span class="badge is-due">${dueCount} fällig</span>` : ""}${newCount ? `<span class="badge is-new">${newCount} neu</span>` : ""}</span>`
         : "";
 
       return `
@@ -211,6 +233,7 @@
           <div class="box-tile-tools">
             ${publishBtn}
             ${editBtn}
+            ${deleteBtn}
           </div>
           <div>
             <div class="box-tile-dot"></div>
@@ -218,7 +241,7 @@
             ${linkedBadge}
             ${publishedBadge}
           </div>
-          <div class="box-tile-meta">${count} Karte${count === 1 ? "" : "n"}</div>
+          <div class="box-tile-meta">${count} Karte${count === 1 ? "" : "n"} ${srsMeta}</div>
         </div>`;
     });
 
@@ -319,8 +342,66 @@
     const topBox = stats.learning.topBox;
     const mostInst = stats.community.mostInstalledBox;
 
+    const masteryRow = (b) => {
+      const pct = Math.round((b.masteryScore || 0) * 100);
+      const accPct = b.avgAccuracy !== null ? Math.round(b.avgAccuracy * 100) : null;
+      return `
+        <div class="mastery-row" data-id="${b.id}" data-action="open-box" style="--tile-color:${b.color}">
+          <div class="mastery-head">
+            <span class="pill-dot"></span>
+            <span class="mastery-name">${escapeHtml(b.name)}</span>
+            <span class="mastery-pct">${pct}%</span>
+          </div>
+          <div class="mastery-bar"><div class="mastery-bar-fill" style="width:${pct}%"></div></div>
+          <div class="mastery-meta muted small">
+            ${accPct !== null ? `Trefferquote ${accPct}%` : "noch zu wenig Daten"}
+            ${b.dueCount ? ` · ${b.dueCount} fällig` : ""}
+            ${b.newCount ? ` · ${b.newCount} neu` : ""}
+          </div>
+        </div>`;
+    };
+
+    const topMasteryHtml = stats.learning.topMastery.length
+      ? stats.learning.topMastery.map(masteryRow).join("")
+      : `<p class="muted small">Übe ein paar Karten in mehreren Boxen, um deine Stärken zu sehen.</p>`;
+    const weakMasteryHtml = stats.learning.weakMastery.length
+      ? stats.learning.weakMastery.map(masteryRow).join("")
+      : `<p class="muted small">Noch keine Schwachstellen erkannt – weiter so!</p>`;
+    const hardestHtml = stats.learning.hardestCards.length
+      ? stats.learning.hardestCards.map((c) => `
+          <div class="hardest-row" ${c.box ? `data-action="open-box" data-id="${c.box.id}"` : ""}
+               style="--tile-color:${c.box ? c.box.color : "var(--accent)"}">
+            <span class="pill-dot"></span>
+            <div class="hardest-text">
+              <div class="hardest-front">${escapeHtml(c.front || "—")}</div>
+              <div class="muted small">${c.box ? escapeHtml(c.box.name) + " · " : ""}${c.accuracyPct}% richtig · ${c.seen}× geübt</div>
+            </div>
+          </div>`).join("")
+      : `<p class="muted small">Sobald du Karten häufiger übst, erscheinen hier deine schwierigsten.</p>`;
+
+    const learning = stats.learning;
+    const dueHighlight = learning.dueToday > 0;
+
     el.innerHTML = `
       <div class="profile-grid">
+
+        <section class="glass profile-section profile-highlight ${dueHighlight ? "is-due" : ""}">
+          <div class="highlight-grid">
+            <div>
+              <div class="highlight-value">${learning.dueToday}</div>
+              <div class="highlight-label">Heute fällig</div>
+            </div>
+            <div>
+              <div class="highlight-value">${learning.retention === null ? "–" : learning.retention + "%"}</div>
+              <div class="highlight-label">Retention</div>
+            </div>
+            <div>
+              <div class="highlight-value">${learning.learningSinceDays || 0}</div>
+              <div class="highlight-label">Lerntage</div>
+            </div>
+            ${dueHighlight ? `<button class="btn primary highlight-cta" data-action="goto-boxes">Jetzt üben →</button>` : ""}
+          </div>
+        </section>
 
         <section class="glass profile-section">
           <h2>Account</h2>
@@ -386,6 +467,21 @@
         </section>
 
         <section class="glass profile-section">
+          <h2>Das beherrschst du gut</h2>
+          <div class="mastery-list">${topMasteryHtml}</div>
+        </section>
+
+        <section class="glass profile-section">
+          <h2>Hier solltest du dranbleiben</h2>
+          <div class="mastery-list">${weakMasteryHtml}</div>
+        </section>
+
+        <section class="glass profile-section profile-learning">
+          <h2>Schwierigste Karten</h2>
+          <div class="hardest-list">${hardestHtml}</div>
+        </section>
+
+        <section class="glass profile-section">
           <h2>Community-Impact</h2>
           <div class="stat-row">
             <div class="stat-cell">
@@ -419,6 +515,7 @@
     if (!cat) { setView("boxes"); renderBoxes(); return; }
 
     const isOwn = cat.ownerId === user.uid;
+    const canEdit = Store.canEdit(cat.id);
 
     $("#box-title").textContent = cat.name;
 
@@ -428,15 +525,22 @@
     const actions = $("#box-actions");
     const authorEl = $("#box-author");
     const descEl = $("#box-description");
+    const modEl = $("#box-modified");
 
     const cards = await Store.getCards(cat.id);
-    meta.textContent = `${cards.length} Karte${cards.length === 1 ? "" : "n"}`;
+    const now = Date.now();
+    const dueCount = cards.filter((c) => c.progress.seen > 0 && (c.progress.dueAt || 0) <= now).length;
+    const newCount = cards.filter((c) => c.progress.seen === 0).length;
+    meta.innerHTML = `${cards.length} Karte${cards.length === 1 ? "" : "n"}`
+      + (dueCount ? ` <span class="badge is-due">${dueCount} fällig</span>` : "")
+      + (newCount ? ` <span class="badge is-new">${newCount} neu</span>` : "");
 
     if (isOwn) {
       authorEl.hidden = true;
     } else {
       authorEl.hidden = false;
-      authorEl.innerHTML = `🔗 von <strong>${escapeHtml(authorName(cat.ownerId))}</strong> · schreibgeschützt`;
+      const editHint = canEdit ? "gemeinschaftlich bearbeitbar" : "schreibgeschützt";
+      authorEl.innerHTML = `🔗 von <strong>${escapeHtml(authorName(cat.ownerId))}</strong> · ${editHint}`;
     }
     if (cat.description) {
       descEl.hidden = false;
@@ -444,15 +548,32 @@
     } else {
       descEl.hidden = true;
     }
+    if (modEl) {
+      if (cat.lastModifiedAt) {
+        modEl.hidden = false;
+        const name = (cat.lastModifiedBy && cat.lastModifiedBy.displayName)
+          || (cat.lastModifiedBy && authorName(cat.lastModifiedBy.uid))
+          || "Unbekannt";
+        modEl.textContent = `Zuletzt geändert von ${name} am ${formatDate(cat.lastModifiedAt)}`;
+      } else {
+        modEl.hidden = true;
+      }
+    }
 
     const studyDisabled = cards.length === 0;
     actions.innerHTML = `
       <button class="btn ghost" data-action="study-start" ${studyDisabled ? "disabled style='opacity:.4;pointer-events:none'" : ""}>Lernen starten</button>
-      ${isOwn
-        ? `<button class="btn primary" data-action="new-card">+ Neue Karte</button>
-           <button class="btn icon" data-action="open-publish" data-id="${cat.id}" title="${cat.published ? "Veröffentlichung verwalten" : "Veröffentlichen"}">📤</button>
-           <button class="btn icon" data-action="delete-box" title="Box löschen" aria-label="Box löschen">🗑</button>`
-        : `<button class="btn ghost" data-action="remove-from-library" data-id="${cat.id}">Aus Bibliothek entfernen</button>`}
+      ${canEdit ? `
+        <button class="btn primary" data-action="new-card">+ Neue Karte</button>
+        <button class="btn ghost" data-action="open-import" title="Karten importieren">⬆ Import</button>
+        <button class="btn icon" data-action="edit-box" data-id="${cat.id}" title="Box bearbeiten" aria-label="Box bearbeiten">✎</button>
+      ` : ""}
+      ${isOwn ? `
+        <button class="btn icon" data-action="open-publish" data-id="${cat.id}" title="${cat.published ? "Veröffentlichung verwalten" : "Veröffentlichen"}">📤</button>
+        <button class="btn icon" data-action="delete-box" data-id="${cat.id}" title="Box löschen" aria-label="Box löschen">🗑</button>
+      ` : `
+        <button class="btn ghost" data-action="remove-from-library" data-id="${cat.id}">Aus Bibliothek entfernen</button>
+      `}
     `;
 
     if (cards.length === 0) {
@@ -486,17 +607,19 @@
       const acc = card.progress.seen
         ? Math.round((card.progress.correct / card.progress.seen) * 100)
         : null;
-      const editActions = isOwn ? `
+      const editActions = canEdit ? `
         <div class="card-item-actions">
           <button class="icon-btn" data-action="edit-card" data-id="${card.id}"
                   aria-label="Karte bearbeiten" title="Bearbeiten">✎</button>
           <button class="icon-btn" data-action="delete-card" data-id="${card.id}"
                   aria-label="Karte löschen" title="Löschen">🗑</button>
         </div>` : "";
+      const badge = dueLabel(card.progress);
 
       return `
         <div class="card-item" data-id="${card.id}">
           ${editActions}
+          <span class="badge ${badge.cls}">${badge.text}</span>
           <div>
             <div class="label">Vorderseite</div>
             <div class="text">${escapeHtml(card.front) || "<em style='color:var(--muted)'>leer</em>"}</div>
@@ -583,8 +706,127 @@
     $("#modal-box").classList.remove("is-open");
     $("#modal-card").classList.remove("is-open");
     $("#modal-publish").classList.remove("is-open");
+    $("#modal-confirm").classList.remove("is-open");
+    $("#modal-import").classList.remove("is-open");
     state.modal.type = null;
     state.modal.editingId = null;
+    _confirmCb = null;
+  }
+
+  /* ----- Confirm-Modal (generisch) ----- */
+  let _confirmCb = null;
+  function openConfirmModal({ title, message, confirmText, cancelText, danger, hideCancel, onConfirm }) {
+    $("#confirm-title").textContent = title || "Bestätigen";
+    $("#confirm-message").textContent = message || "";
+    const ok = $("#confirm-ok-btn");
+    ok.textContent = confirmText || "Bestätigen";
+    ok.classList.toggle("wrong", !!danger);
+    ok.classList.toggle("primary", !danger);
+    const cancel = $("#confirm-cancel-btn");
+    cancel.textContent = cancelText || "Abbrechen";
+    cancel.hidden = !!hideCancel;
+    _confirmCb = typeof onConfirm === "function" ? onConfirm : null;
+    $("#modal-confirm").classList.add("is-open");
+  }
+  function resolveConfirm(confirmed) {
+    const cb = _confirmCb;
+    _confirmCb = null;
+    $("#modal-confirm").classList.remove("is-open");
+    if (confirmed && cb) {
+      try { cb(); } catch (e) { console.error(e); }
+    }
+  }
+
+  /* ----- CSV/TSV Parser ----- */
+  const IMPORT_DELIMS = { tab: "\t", semicolon: ";", comma: "," };
+  function detectDelimiter(text) {
+    const sample = text.split(/\r?\n/).slice(0, 10).join("\n");
+    const counts = { "\t": 0, ";": 0, ",": 0 };
+    for (const ch of sample) if (ch in counts) counts[ch] += 1;
+    let best = "\t", bestN = -1;
+    Object.entries(counts).forEach(([d, n]) => { if (n > bestN) { best = d; bestN = n; } });
+    return bestN > 0 ? best : "\t";
+  }
+  function splitDelimitedLine(line, delim) {
+    const out = [];
+    let cur = "", inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i += 1; }
+        else if (ch === '"') inQuotes = false;
+        else cur += ch;
+      } else {
+        if (ch === '"') inQuotes = true;
+        else if (ch === delim) { out.push(cur); cur = ""; }
+        else cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+  function parseCardsCsv(text, delimiterOpt) {
+    const delim = delimiterOpt && delimiterOpt !== "auto" ? delimiterOpt : detectDelimiter(text);
+    const lines = text.split(/\r?\n/);
+    const valid = [], invalid = [];
+    lines.forEach((raw, idx) => {
+      const line = raw.trim();
+      if (!line) return;
+      const parts = splitDelimitedLine(line, delim).map((s) => s.trim());
+      if (parts.length < 2 || (!parts[0] && !parts.slice(1).join(""))) {
+        invalid.push({ line: idx + 1, raw });
+        return;
+      }
+      const front = parts[0];
+      const back = parts.slice(1).join(delim).trim();
+      if (!front && !back) { invalid.push({ line: idx + 1, raw }); return; }
+      valid.push({ front, back });
+    });
+    return { valid, invalid, delimiter: delim };
+  }
+
+  /* ----- Import Modal ----- */
+  function openImportModal() {
+    $("#import-text").value = "";
+    $("#import-delimiter").value = "auto";
+    renderImportPreview();
+    $("#modal-import").classList.add("is-open");
+    if (!matchMedia("(pointer: coarse)").matches) {
+      setTimeout(() => $("#import-text").focus(), 50);
+    }
+  }
+  function renderImportPreview() {
+    const text = $("#import-text").value;
+    const delim = $("#import-delimiter").value;
+    const out = $("#import-preview");
+    if (!text.trim()) { out.innerHTML = '<span class="muted small">Noch nichts eingefügt.</span>'; return; }
+    const { valid, invalid, delimiter } = parseCardsCsv(text, delim);
+    const delimName = delimiter === "\t" ? "Tab" : delimiter === ";" ? "Semikolon" : "Komma";
+    const sample = valid.slice(0, 5).map((c) =>
+      `<div class="import-row"><strong>${escapeHtml(c.front)}</strong><span class="muted"> → </span>${escapeHtml(c.back)}</div>`
+    ).join("");
+    out.innerHTML = `
+      <div class="import-stats">
+        <span><strong>${valid.length}</strong> Karte${valid.length === 1 ? "" : "n"} erkannt</span>
+        ${invalid.length ? `<span class="muted"> · ${invalid.length} ungültig</span>` : ""}
+        <span class="muted"> · Trenner: ${delimName}</span>
+      </div>
+      ${sample ? `<div class="import-sample">${sample}${valid.length > 5 ? `<div class="muted small">… und ${valid.length - 5} weitere</div>` : ""}</div>` : ""}
+    `;
+  }
+  async function submitImport() {
+    const text = $("#import-text").value;
+    const delim = $("#import-delimiter").value;
+    const { valid } = parseCardsCsv(text, delim);
+    if (valid.length === 0) { showToast("Keine gültigen Karten erkannt"); return; }
+    try {
+      await Store.addCardsBatch(state.currentCategoryId, valid);
+      showToast(`${valid.length} Karte${valid.length === 1 ? "" : "n"} importiert`);
+      closeModals();
+      renderCards();
+    } catch (err) {
+      showToast(err.message || "Fehler beim Import");
+    }
   }
 
   async function saveBox() {
@@ -655,11 +897,32 @@
   }
 
   /* ---------- Study mode ---------- */
-  async function startStudy() {
+  const MAX_NEW_PER_SESSION = 10;
+
+  function buildSrsDeck(cards) {
+    const now = Date.now();
+    const due = cards.filter((c) => c.progress.seen > 0 && (c.progress.dueAt || 0) <= now)
+      .sort((a, b) => (a.progress.dueAt || 0) - (b.progress.dueAt || 0));
+    const fresh = shuffle(cards.filter((c) => c.progress.seen === 0).slice())
+      .slice(0, MAX_NEW_PER_SESSION);
+    return [...due, ...fresh];
+  }
+
+  async function startStudy(forceAll = false) {
     const cards = await Store.getCards(state.currentCategoryId);
     if (cards.length === 0) { showToast("Keine Karten zum Lernen"); return; }
+    let deck = forceAll ? shuffle(cards.slice()) : buildSrsDeck(cards);
+    if (deck.length === 0) {
+      openConfirmModal({
+        title: "Alles aktuell!",
+        message: "Keine Karten sind heute fällig. Möchtest du trotzdem alle Karten durchgehen?",
+        confirmText: "Alle üben",
+        onConfirm: () => startStudy(true),
+      });
+      return;
+    }
     state.study = {
-      deck: shuffle(cards.slice()),
+      deck,
       index: 0,
       correct: 0,
       wrong: 0,
@@ -762,10 +1025,15 @@
         break;
 
       case "logout":
-        if (confirm("Wirklich abmelden?")) {
-          await Store.logout();
-          showToast("Abgemeldet");
-        }
+        openConfirmModal({
+          title: "Abmelden?",
+          message: "Du wirst aus deinem Konto abgemeldet.",
+          confirmText: "Abmelden",
+          onConfirm: async () => {
+            await Store.logout();
+            showToast("Abgemeldet");
+          },
+        });
         break;
 
       case "go-home":
@@ -825,26 +1093,41 @@
         e.stopPropagation();
         {
           const cat = await Store.getCategory(id);
-          const isOwn = cat && Store.isOwner(id);
-          const msg = isOwn
-            ? "Diese Box und alle ihre Karten wirklich löschen?"
-            : "Diese verknüpfte Box aus deiner Bibliothek entfernen?";
-          if (!confirm(msg)) break;
-          try {
-            await Store.removeFromLibrary(id);
-            showToast(isOwn ? "Box gelöscht" : "Aus Bibliothek entfernt");
-            if (state.view === "cards") {
-              state.currentCategoryId = null;
-              setView("boxes");
-              renderBoxes();
-            } else if (state.view === "shop") {
-              renderShop();
-            } else {
-              renderBoxes();
-            }
-          } catch (err) {
-            showToast(err.message || "Fehler");
+          const isOwnBox = cat && Store.isOwner(id);
+          if (isOwnBox && cat.published) {
+            openConfirmModal({
+              title: "Box ist veröffentlicht",
+              message: "Diese Box ist im Shop veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst aus dem Shop.",
+              confirmText: "OK",
+              hideCancel: true,
+            });
+            break;
           }
+          openConfirmModal({
+            title: isOwnBox ? "Box löschen?" : "Aus Bibliothek entfernen?",
+            message: isOwnBox
+              ? "Diese Box und alle ihre Karten werden unwiderruflich gelöscht."
+              : "Die verknüpfte Box wird aus deiner Bibliothek entfernt.",
+            confirmText: isOwnBox ? "Löschen" : "Entfernen",
+            danger: isOwnBox,
+            onConfirm: async () => {
+              try {
+                await Store.removeFromLibrary(id);
+                showToast(isOwnBox ? "Box gelöscht" : "Aus Bibliothek entfernt");
+                if (state.view === "cards") {
+                  state.currentCategoryId = null;
+                  setView("boxes");
+                  renderBoxes();
+                } else if (state.view === "shop") {
+                  renderShop();
+                } else {
+                  renderBoxes();
+                }
+              } catch (err) {
+                showToast(err.message || "Fehler");
+              }
+            },
+          });
         }
         break;
 
@@ -857,16 +1140,37 @@
         break;
 
       case "delete-box":
-        if (confirm("Diese Box und alle ihre Karten wirklich löschen?")) {
-          try {
-            await Store.deleteCategory(state.currentCategoryId);
-            state.currentCategoryId = null;
-            showToast("Box gelöscht");
-            setView("boxes");
-            renderBoxes();
-          } catch (err) {
-            showToast(err.message || "Fehler");
+        e.stopPropagation();
+        {
+          const delId = id || state.currentCategoryId;
+          const cat = await Store.getCategory(delId);
+          if (!cat) break;
+          if (cat.published) {
+            openConfirmModal({
+              title: "Box ist veröffentlicht",
+              message: "Diese Box ist im Shop veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst aus dem Shop.",
+              confirmText: "OK",
+              hideCancel: true,
+            });
+            break;
           }
+          openConfirmModal({
+            title: "Box löschen?",
+            message: `„${cat.name}" und alle ihre Karten werden unwiderruflich gelöscht.`,
+            confirmText: "Löschen",
+            danger: true,
+            onConfirm: async () => {
+              try {
+                await Store.deleteCategory(delId);
+                if (state.currentCategoryId === delId) state.currentCategoryId = null;
+                showToast("Box gelöscht");
+                setView("boxes");
+                renderBoxes();
+              } catch (err) {
+                showToast(err.message || "Fehler");
+              }
+            },
+          });
         }
         break;
 
@@ -881,15 +1185,37 @@
 
       case "delete-card":
         e.stopPropagation();
-        if (confirm("Diese Karte wirklich löschen?")) {
-          try {
-            await Store.deleteCard(id);
-            showToast("Karte gelöscht");
-            renderCards();
-          } catch (err) {
-            showToast(err.message || "Fehler");
-          }
-        }
+        openConfirmModal({
+          title: "Karte löschen?",
+          message: "Diese Karte wird unwiderruflich gelöscht.",
+          confirmText: "Löschen",
+          danger: true,
+          onConfirm: async () => {
+            try {
+              await Store.deleteCard(id);
+              showToast("Karte gelöscht");
+              renderCards();
+            } catch (err) {
+              showToast(err.message || "Fehler");
+            }
+          },
+        });
+        break;
+
+      case "open-import":
+        openImportModal();
+        break;
+
+      case "import-submit":
+        submitImport();
+        break;
+
+      case "confirm-ok":
+        resolveConfirm(true);
+        break;
+
+      case "confirm-cancel":
+        resolveConfirm(false);
         break;
 
       case "close-modal":
@@ -913,10 +1239,12 @@
         break;
 
       case "study-exit":
-        if (confirm("Lernen wirklich beenden?")) {
-          setView("cards");
-          renderCards();
-        }
+        openConfirmModal({
+          title: "Lernen beenden?",
+          message: "Dein bisheriger Fortschritt in dieser Runde geht verloren.",
+          confirmText: "Beenden",
+          onConfirm: () => { setView("cards"); renderCards(); },
+        });
         break;
 
       case "study-again":
@@ -962,10 +1290,18 @@
     onSearch("#search-cards", (e) => { state.cardFilter = e.target.value; renderCards(); });
     onSearch("#search-shop",  (e) => { state.shopFilter = e.target.value; renderShop();  });
 
+    // Import-Preview live updaten
+    const importText = $("#import-text");
+    const importDelim = $("#import-delimiter");
+    if (importText) importText.addEventListener("input", renderImportPreview);
+    if (importDelim) importDelim.addEventListener("change", renderImportPreview);
+
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
-        if ($("#modal-box").classList.contains("is-open") ||
+        if ($("#modal-confirm").classList.contains("is-open")) { resolveConfirm(false); return; }
+        if ($("#modal-import").classList.contains("is-open") ||
+            $("#modal-box").classList.contains("is-open") ||
             $("#modal-card").classList.contains("is-open") ||
             $("#modal-publish").classList.contains("is-open")) closeModals();
       }

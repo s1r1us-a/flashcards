@@ -1,5 +1,5 @@
 {
-  "_comment": "Firebase Realtime Database Security Rules für Flashcards. In der Firebase Console unter 'Realtime Database → Rules' einfügen. Lesen aller Boxen/Karten/Users ist für eingeloggte Nutzer erlaubt (für Shop und Autor-Anzeige), Schreiben ist auf den jeweiligen Owner bzw. den jeweiligen Nutzer beschränkt.",
+  "_comment": "Firebase Realtime Database Security Rules für Flashcards. In der Firebase Console unter 'Realtime Database → Rules' einfügen. Lesen aller Boxen/Karten/Users ist für eingeloggte Nutzer erlaubt (für Shop und Autor-Anzeige). Eigene Boxen sind immer vom Ersteller schreibbar; veröffentlichte Boxen (published=true) dürfen von allen angemeldeten Nutzern gemeinschaftlich bearbeitet werden (Wiki-Modus). Das published-Flag selbst und die ownerId bleiben dem Ersteller vorbehalten. Jede Änderung an lastModifiedBy muss die eigene auth.uid tragen (Audit-Trail).",
   "rules": {
     ".read": false,
     ".write": false,
@@ -14,9 +14,16 @@
     "categories": {
       ".read": "auth != null",
       "$cid": {
-        ".write": "auth != null && ((!data.exists() && newData.child('ownerId').val() === auth.uid) || (data.exists() && data.child('ownerId').val() === auth.uid))",
+        ".write": "auth != null && ((!data.exists() && newData.child('ownerId').val() === auth.uid) || (data.exists() && (data.child('ownerId').val() === auth.uid || data.child('published').val() === true)))",
+        ".validate": "!newData.exists() || !data.exists() || newData.child('ownerId').val() === data.child('ownerId').val()",
         "installCount": {
           ".write": "auth != null && newData.isNumber() && newData.val() >= 0"
+        },
+        "published": {
+          ".write": "auth != null && data.parent().child('ownerId').val() === auth.uid"
+        },
+        "lastModifiedBy": {
+          ".validate": "newData.child('uid').val() === auth.uid"
         }
       }
     },
@@ -24,7 +31,7 @@
     "cards": {
       ".read": "auth != null",
       "$cardId": {
-        ".write": "auth != null && ((!data.exists() && root.child('categories').child(newData.child('categoryId').val()).child('ownerId').val() === auth.uid) || (data.exists() && root.child('categories').child(data.child('categoryId').val()).child('ownerId').val() === auth.uid))"
+        ".write": "auth != null && ((!data.exists() && (root.child('categories').child(newData.child('categoryId').val()).child('ownerId').val() === auth.uid || root.child('categories').child(newData.child('categoryId').val()).child('published').val() === true)) || (data.exists() && (root.child('categories').child(data.child('categoryId').val()).child('ownerId').val() === auth.uid || root.child('categories').child(data.child('categoryId').val()).child('published').val() === true)))"
       }
     },
 

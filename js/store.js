@@ -211,6 +211,7 @@ function buildProfileStats() {
   // Lernverhalten
   let seen = 0, correct = 0, wrong = 0;
   const seenByBox = {};
+  let firstReviewed = null;
   Object.entries(cache.userProgress || {}).forEach(([cardId, p]) => {
     if (!p) return;
     seen    += p.seen    || 0;
@@ -220,10 +221,82 @@ function buildProfileStats() {
     if (card) {
       seenByBox[card.categoryId] = (seenByBox[card.categoryId] || 0) + (p.seen || 0);
     }
+    if (p.lastReviewed && (!firstReviewed || p.lastReviewed < firstReviewed)) {
+      firstReviewed = p.lastReviewed;
+    }
   });
   const accuracy = seen ? Math.round((correct / seen) * 100) : null;
   const currentStreak = computeCurrentStreak(cache.userProgress);
   const longestStreak = Math.max(me.longestStreak || 0, currentStreak);
+
+  // Box-Mastery — pro Box aggregieren
+  const libBoxes = [...myOwn, ...linked];
+  const cardsByBox = {};
+  Object.values(cache.cards).forEach((card) => {
+    if (!card || !libBoxIds.has(card.categoryId)) return;
+    (cardsByBox[card.categoryId] = cardsByBox[card.categoryId] || []).push(card);
+  });
+  const now = Date.now();
+  let dueToday = 0;
+  let easyEnoughCount = 0;
+  let totalWithProgress = 0;
+  const hardestPool = [];
+
+  const boxMastery = libBoxes.map((box) => {
+    const cards = cardsByBox[box.id] || [];
+    let bSeen = 0, bCorrect = 0, bWrong = 0, bDue = 0, bNew = 0;
+    let easeSum = 0, easeCount = 0;
+    let accCardCount = 0, accSum = 0;
+    cards.forEach((card) => {
+      const p = progressWithDefaults(cache.userProgress[card.id]);
+      bSeen += p.seen; bCorrect += p.correct; bWrong += p.wrong;
+      if (p.seen === 0) bNew += 1;
+      else if (p.dueAt <= now) bDue += 1;
+      if (p.seen >= 1) {
+        easeSum += p.ease; easeCount += 1;
+        totalWithProgress += 1;
+        if (p.ease >= 2.5) easyEnoughCount += 1;
+      }
+      if (p.seen >= 3) {
+        accCardCount += 1;
+        accSum += p.correct / p.seen;
+      }
+      if (p.seen >= 5) {
+        hardestPool.push({
+          cardId: card.id, categoryId: card.categoryId,
+          front: card.front, accuracy: p.correct / p.seen, seen: p.seen,
+        });
+      }
+    });
+    dueToday += bDue;
+    const avgAccuracy = accCardCount ? accSum / accCardCount : null;
+    const coverage = cards.length ? accCardCount / cards.length : 0;
+    const masteryScore = avgAccuracy !== null ? avgAccuracy * coverage : null;
+    return {
+      id: box.id, name: box.name, color: box.color,
+      cardCount: cards.length,
+      seenCount: bSeen, dueCount: bDue, newCount: bNew,
+      avgAccuracy, avgEase: easeCount ? easeSum / easeCount : null,
+      masteryScore,
+    };
+  });
+  const ranked = boxMastery.filter((b) => b.masteryScore !== null);
+  const topMastery = ranked.slice().sort((a, b) => b.masteryScore - a.masteryScore).slice(0, 3);
+  const weakMastery = ranked.slice().sort((a, b) => a.masteryScore - b.masteryScore).slice(0, 3);
+  const hardestCards = hardestPool
+    .sort((a, b) => a.accuracy - b.accuracy)
+    .slice(0, 5)
+    .map((c) => ({
+      ...c,
+      accuracyPct: Math.round(c.accuracy * 100),
+      box: cache.categories[c.categoryId] || null,
+    }));
+  const retention = totalWithProgress
+    ? Math.round((easyEnoughCount / totalWithProgress) * 100)
+    : null;
+  const learningSinceDays = firstReviewed
+    ? Math.max(1, Math.round((now - firstReviewed) / DAY_MS) + 1)
+    : 0;
 
   // 7-Tage-Aktivität (heute = letzter Eintrag)
   const today = startOfDay(Date.now());
@@ -274,6 +347,12 @@ function buildProfileStats() {
       topBox,
       topBoxSeen,
       last7,
+      dueToday,
+      retention,
+      learningSinceDays,
+      topMastery,
+      weakMastery,
+      hardestCards,
     },
     community: {
       publishedCount: published.length,
@@ -293,6 +372,64 @@ function requireUser() {
 function isOwnerOf(categoryId) {
   const cat = cache.categories[categoryId];
   return !!(cat && currentUser && cat.ownerId === currentUser.uid);
+}
+
+// Bearbeiten erlaubt: eigene Box ODER veröffentlichte Box (Wiki-Modus).
+function canEditBox(categoryId) {
+  const cat = cache.categories[categoryId];
+  if (!cat || !currentUser) return false;
+  return cat.ownerId === currentUser.uid || cat.published === true;
+}
+
+function auditPatch() {
+  const u = requireUser();
+  return {
+    lastModifiedBy: { uid: u.uid, displayName: u.displayName || "" },
+    lastModifiedAt: Date.now(),
+  };
+}
+
+/* ---------- SRS (SM-2 Light) ---------- */
+
+const SRS_DEFAULTS = Object.freeze({
+  ease: 2.5,
+  interval: 0,
+  repetitions: 0,
+  dueAt: 0,
+});
+
+function progressWithDefaults(p) {
+  return {
+    seen: (p && p.seen) || 0,
+    correct: (p && p.correct) || 0,
+    wrong: (p && p.wrong) || 0,
+    lastReviewed: (p && p.lastReviewed) || 0,
+    ease: (p && typeof p.ease === "number") ? p.ease : SRS_DEFAULTS.ease,
+    interval: (p && typeof p.interval === "number") ? p.interval : SRS_DEFAULTS.interval,
+    repetitions: (p && typeof p.repetitions === "number") ? p.repetitions : SRS_DEFAULTS.repetitions,
+    dueAt: (p && typeof p.dueAt === "number") ? p.dueAt : SRS_DEFAULTS.dueAt,
+  };
+}
+
+function srsNext(prev, correct) {
+  let { ease, interval, repetitions } = prev;
+  if (!correct) {
+    repetitions = 0;
+    interval = 1;
+    ease = Math.max(1.3, ease - 0.2);
+  } else {
+    repetitions += 1;
+    if (repetitions === 1) interval = 1;
+    else if (repetitions === 2) interval = 3;
+    else interval = Math.max(1, Math.round(interval * ease));
+    ease = ease + 0.1;
+  }
+  return {
+    ease: Math.round(ease * 100) / 100,
+    interval,
+    repetitions,
+    dueAt: Date.now() + interval * DAY_MS,
+  };
 }
 
 /* ---------- public API ---------- */
@@ -388,12 +525,20 @@ const Store = {
   },
 
   async updateCategory(id, patch) {
-    if (!isOwnerOf(id)) throw new Error("Nur der Ersteller darf diese Box ändern");
+    const user = requireUser();
     const current = cache.categories[id];
     if (!current) return null;
-    const allowed = ["name", "color", "description", "published"];
+    const isOwner = current.ownerId === user.uid;
+    const canEdit = isOwner || current.published === true;
+    if (!canEdit) throw new Error("Diese Box ist schreibgeschützt");
+
+    const allowedAll = ["name", "color", "description"];
+    const allowedOwner = ["published"];
     const cleanPatch = {};
-    for (const k of allowed) if (k in patch) cleanPatch[k] = patch[k];
+    for (const k of allowedAll) if (k in patch) cleanPatch[k] = patch[k];
+    if (isOwner) for (const k of allowedOwner) if (k in patch) cleanPatch[k] = patch[k];
+    Object.assign(cleanPatch, auditPatch());
+
     const next = { ...current, ...cleanPatch };
     cache.categories[id] = next;
     notify();
@@ -414,6 +559,10 @@ const Store = {
 
   async deleteCategory(id) {
     if (!isOwnerOf(id)) throw new Error("Nur der Ersteller darf diese Box löschen");
+    const cat = cache.categories[id];
+    if (cat && cat.published) {
+      throw new Error("Diese Box ist im Shop veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst aus dem Shop.");
+    }
     const updates = {};
     updates[`categories/${id}`] = null;
     Object.values(cache.cards).forEach((card) => {
@@ -465,8 +614,7 @@ const Store = {
     return list
       .map((c) => ({
         ...c,
-        progress: cache.userProgress[c.id]
-          || { seen: 0, correct: 0, wrong: 0, lastReviewed: 0 },
+        progress: progressWithDefaults(cache.userProgress[c.id]),
       }))
       .sort((a, b) => a.createdAt - b.createdAt);
   },
@@ -476,13 +624,13 @@ const Store = {
     if (!c) return null;
     return {
       ...c,
-      progress: cache.userProgress[id]
-        || { seen: 0, correct: 0, wrong: 0, lastReviewed: 0 },
+      progress: progressWithDefaults(cache.userProgress[id]),
     };
   },
 
   async addCard(categoryId, front, back) {
-    if (!isOwnerOf(categoryId)) throw new Error("Diese Box ist schreibgeschützt");
+    requireUser();
+    if (!canEditBox(categoryId)) throw new Error("Diese Box ist schreibgeschützt");
     const card = {
       id: uid("card"),
       categoryId,
@@ -491,45 +639,102 @@ const Store = {
       createdAt: Date.now(),
     };
     cache.cards[card.id] = card;
+    const audit = auditPatch();
+    cache.categories[categoryId] = { ...cache.categories[categoryId], ...audit };
     notify();
-    await set(ref(db, `cards/${card.id}`), card);
+    const updates = {};
+    updates[`cards/${card.id}`] = card;
+    updates[`categories/${categoryId}/lastModifiedBy`] = audit.lastModifiedBy;
+    updates[`categories/${categoryId}/lastModifiedAt`] = audit.lastModifiedAt;
+    await update(ref(db), updates);
     return card;
   },
 
+  async addCardsBatch(categoryId, items) {
+    requireUser();
+    if (!canEditBox(categoryId)) throw new Error("Diese Box ist schreibgeschützt");
+    const created = [];
+    const updates = {};
+    for (const it of items) {
+      const front = (it && it.front || "").trim();
+      const back = (it && it.back || "").trim();
+      if (!front && !back) continue;
+      const card = {
+        id: uid("card"),
+        categoryId,
+        front,
+        back,
+        createdAt: Date.now(),
+      };
+      cache.cards[card.id] = card;
+      updates[`cards/${card.id}`] = card;
+      created.push(card);
+    }
+    if (created.length === 0) return [];
+    const audit = auditPatch();
+    cache.categories[categoryId] = { ...cache.categories[categoryId], ...audit };
+    updates[`categories/${categoryId}/lastModifiedBy`] = audit.lastModifiedBy;
+    updates[`categories/${categoryId}/lastModifiedAt`] = audit.lastModifiedAt;
+    notify();
+    await update(ref(db), updates);
+    return created;
+  },
+
   async updateCard(id, patch) {
+    requireUser();
     const current = cache.cards[id];
     if (!current) return null;
-    if (!isOwnerOf(current.categoryId)) throw new Error("Diese Karte ist schreibgeschützt");
+    if (!canEditBox(current.categoryId)) throw new Error("Diese Karte ist schreibgeschützt");
     const allowed = ["front", "back"];
     const cleanPatch = {};
     for (const k of allowed) if (k in patch) cleanPatch[k] = patch[k];
     const next = { ...current, ...cleanPatch };
     cache.cards[id] = next;
+    const audit = auditPatch();
+    cache.categories[current.categoryId] = { ...cache.categories[current.categoryId], ...audit };
     notify();
-    await update(ref(db, `cards/${id}`), cleanPatch);
+    const updates = {};
+    Object.entries(cleanPatch).forEach(([k, v]) => { updates[`cards/${id}/${k}`] = v; });
+    updates[`categories/${current.categoryId}/lastModifiedBy`] = audit.lastModifiedBy;
+    updates[`categories/${current.categoryId}/lastModifiedAt`] = audit.lastModifiedAt;
+    await update(ref(db), updates);
     return next;
   },
 
   async deleteCard(id) {
+    requireUser();
     const current = cache.cards[id];
     if (!current) return;
-    if (!isOwnerOf(current.categoryId)) throw new Error("Diese Karte ist schreibgeschützt");
+    if (!canEditBox(current.categoryId)) throw new Error("Diese Karte ist schreibgeschützt");
     delete cache.cards[id];
+    const audit = auditPatch();
+    cache.categories[current.categoryId] = { ...cache.categories[current.categoryId], ...audit };
     notify();
-    await remove(ref(db, `cards/${id}`));
+    const updates = {};
+    updates[`cards/${id}`] = null;
+    updates[`categories/${current.categoryId}/lastModifiedBy`] = audit.lastModifiedBy;
+    updates[`categories/${current.categoryId}/lastModifiedAt`] = audit.lastModifiedAt;
+    await update(ref(db), updates);
   },
 
   /* --- Lernen --- */
+  canEdit(categoryId) { return canEditBox(categoryId); },
+
   async recordAnswer(cardId, correct) {
     const user = requireUser();
     const card = cache.cards[cardId];
     if (!card) return null;
-    const prev = cache.userProgress[cardId] || { seen: 0, correct: 0, wrong: 0, lastReviewed: 0 };
+    const prev = progressWithDefaults(cache.userProgress[cardId]);
+    const srs = srsNext(prev, correct);
     const progress = {
-      seen:    (prev.seen    || 0) + 1,
-      correct: (prev.correct || 0) + (correct ? 1 : 0),
-      wrong:   (prev.wrong   || 0) + (correct ? 0 : 1),
+      seen:    prev.seen + 1,
+      correct: prev.correct + (correct ? 1 : 0),
+      wrong:   prev.wrong + (correct ? 0 : 1),
       lastReviewed: Date.now(),
+      ease: srs.ease,
+      interval: srs.interval,
+      repetitions: srs.repetitions,
+      dueAt: srs.dueAt,
     };
     cache.userProgress[cardId] = progress;
     notify();
