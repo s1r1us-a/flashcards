@@ -1256,6 +1256,46 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Import-Dropzone */
+.import-dropzone {
+  margin: 0 0 14px;
+  padding: 18px 16px;
+  border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--glass-border);
+  background: rgba(0,0,0,0.18);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+  outline: none;
+}
+.import-dropzone:hover,
+.import-dropzone:focus-visible {
+  border-color: var(--accent);
+  background: rgba(139, 92, 246, 0.08);
+}
+.import-dropzone.is-dragover {
+  border-color: var(--accent);
+  background: rgba(139, 92, 246, 0.15);
+  transform: scale(1.01);
+}
+.import-dropzone-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  pointer-events: none;
+}
+.import-dropzone-icon {
+  font-size: 22px;
+  line-height: 1;
+  margin-bottom: 2px;
+  opacity: 0.85;
+}
+#import-file-name {
+  margin-top: 4px;
+  font-weight: 500;
+}
+
 /* =========================================================================
    Responsive
    ========================================================================= */
