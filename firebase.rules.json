@@ -1,0 +1,45 @@
+{
+  "_comment": "Firebase Realtime Database Security Rules für Flashcards. In der Firebase Console unter 'Realtime Database → Rules' einfügen. Lesen aller Boxen/Karten/Users ist für eingeloggte Nutzer erlaubt (für Shop und Autor-Anzeige), Schreiben ist auf den jeweiligen Owner bzw. den jeweiligen Nutzer beschränkt.",
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "categories": {
+      ".read": "auth != null",
+      "$cid": {
+        ".write": "auth != null && ((!data.exists() && newData.child('ownerId').val() === auth.uid) || (data.exists() && data.child('ownerId').val() === auth.uid))",
+        "installCount": {
+          ".write": "auth != null && newData.isNumber() && newData.val() >= 0"
+        }
+      }
+    },
+
+    "cards": {
+      ".read": "auth != null",
+      "$cardId": {
+        ".write": "auth != null && ((!data.exists() && root.child('categories').child(newData.child('categoryId').val()).child('ownerId').val() === auth.uid) || (data.exists() && root.child('categories').child(data.child('categoryId').val()).child('ownerId').val() === auth.uid))"
+      }
+    },
+
+    "userLibrary": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "userProgress": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}
