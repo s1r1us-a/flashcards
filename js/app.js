@@ -954,18 +954,13 @@
     });
 
     // Search inputs
-    $("#search-boxes").addEventListener("input", (e) => {
-      state.boxFilter = e.target.value;
-      renderBoxes();
-    });
-    $("#search-cards").addEventListener("input", (e) => {
-      state.cardFilter = e.target.value;
-      renderCards();
-    });
-    $("#search-shop").addEventListener("input", (e) => {
-      state.shopFilter = e.target.value;
-      renderShop();
-    });
+    const onSearch = (sel, set) => {
+      const el = $(sel);
+      if (el) el.addEventListener("input", set);
+    };
+    onSearch("#search-boxes", (e) => { state.boxFilter  = e.target.value; renderBoxes(); });
+    onSearch("#search-cards", (e) => { state.cardFilter = e.target.value; renderCards(); });
+    onSearch("#search-shop",  (e) => { state.shopFilter = e.target.value; renderShop();  });
 
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
