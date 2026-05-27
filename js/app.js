@@ -1013,15 +1013,23 @@
     }
   }
 
-  function init() {
+  async function init() {
     closeModals();
     bindEvents();
     renderAuth();
-    setView("auth");
-    if (window.Store) {
-      window.Store.subscribe(scheduleRerender);
-      window.Store.onAuthChange(onAuthChanged);
+    if (!window.Store) return;
+    // Warte einmalig auf den ersten Firebase-Auth-State-Check, bevor wir eine
+    // View zeigen – sonst blitzt beim Reload kurz die Login-Seite auf, bevor
+    // die gespeicherte Session erkannt wird.
+    await window.Store.authReady();
+    if (window.Store.getCurrentUser()) {
+      setView("boxes");
+      renderBoxes();
+    } else {
+      setView("auth");
     }
+    window.Store.subscribe(scheduleRerender);
+    window.Store.onAuthChange(onAuthChanged);
   }
 
   if (document.readyState === "loading") {

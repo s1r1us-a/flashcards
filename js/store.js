@@ -83,6 +83,18 @@ function notifyAuth() {
   });
 }
 
+// Promise die resolved, sobald Firebase Auth einmalig den gespeicherten
+// Session-Status aus dem LocalStorage geladen und onAuthStateChanged
+// das erste Mal gefeuert hat. Verhindert den Login-Flash beim Reload.
+let _authReadyResolve;
+const _authReady = new Promise((r) => { _authReadyResolve = r; });
+let _authReadyDone = false;
+function markAuthReady() {
+  if (_authReadyDone) return;
+  _authReadyDone = true;
+  _authReadyResolve();
+}
+
 /* ---------- globale Listener (lesen für alle erlaubt) ---------- */
 
 onValue(ref(db, "categories"), (snap) => {
@@ -151,6 +163,7 @@ onAuthStateChanged(auth, (user) => {
   } else {
     currentUser = null;
   }
+  markAuthReady();
   notifyAuth();
   notify();
 });
@@ -287,6 +300,8 @@ function isOwnerOf(categoryId) {
 const Store = {
   /* --- Auth --- */
   getCurrentUser() { return currentUser; },
+
+  authReady() { return _authReady; },
 
   onAuthChange(callback) {
     authListeners.add(callback);
