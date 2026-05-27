@@ -12,12 +12,13 @@
   ];
 
   const state = {
-    view: "boxes",
+    view: "auth",
     currentCategoryId: null,
     boxFilter: "",
     cardFilter: "",
     modal: { type: null, editingId: null, color: SWATCHES[0] },
     study: { deck: [], index: 0, correct: 0, wrong: 0, revealed: false },
+    auth: { mode: "login" }, // "login" | "register" | "reset"
   };
 
   /* ---------- DOM helpers ---------- */
@@ -53,7 +54,7 @@
 
   async function renderCrumbs() {
     const el = $("#crumbs");
-    if (state.view === "boxes") { el.innerHTML = ""; return; }
+    if (state.view === "boxes" || state.view === "auth") { el.innerHTML = ""; return; }
     const cat = state.currentCategoryId
       ? await Store.getCategory(state.currentCategoryId)
       : null;
@@ -62,6 +63,100 @@
     if (state.view === "study") parts.push("<span>Lernen</span>");
     if (state.view === "finish") parts.push("<span>Ergebnis</span>");
     el.innerHTML = parts.join("");
+  }
+
+  /* ---------- Auth view ---------- */
+  function renderAuth() {
+    const mode = state.auth.mode;
+    const title    = $("#auth-title");
+    const subtitle = $("#auth-subtitle");
+    const submit   = $("#auth-submit");
+    const links    = $("#auth-links");
+    const pwField  = $("#auth-password-field");
+    const pw2Field = $("#auth-password2-field");
+
+    hideAuthError();
+
+    if (mode === "login") {
+      title.textContent = "Anmelden";
+      subtitle.textContent = "Willkommen zurück bei Flashcards.";
+      submit.textContent = "Anmelden";
+      pwField.hidden = false;
+      pw2Field.hidden = true;
+      $("#auth-password").autocomplete = "current-password";
+      links.innerHTML = `
+        <a href="#" data-action="auth-switch-mode" data-mode="reset">Passwort vergessen?</a>
+        <span class="auth-sep">·</span>
+        <a href="#" data-action="auth-switch-mode" data-mode="register">Account erstellen</a>`;
+    } else if (mode === "register") {
+      title.textContent = "Account erstellen";
+      subtitle.textContent = "Lege einen neuen Flashcards-Account an.";
+      submit.textContent = "Registrieren";
+      pwField.hidden = false;
+      pw2Field.hidden = false;
+      $("#auth-password").autocomplete = "new-password";
+      links.innerHTML = `
+        <a href="#" data-action="auth-switch-mode" data-mode="login">← Zurück zum Login</a>`;
+    } else if (mode === "reset") {
+      title.textContent = "Passwort zurücksetzen";
+      subtitle.textContent = "Wir senden dir einen Link per Email.";
+      submit.textContent = "Link senden";
+      pwField.hidden = true;
+      pw2Field.hidden = true;
+      links.innerHTML = `
+        <a href="#" data-action="auth-switch-mode" data-mode="login">← Zurück zum Login</a>`;
+    }
+
+    $("#auth-password").value = "";
+    $("#auth-password2").value = "";
+  }
+
+  function showAuthError(msg) {
+    const el = $("#auth-error");
+    el.textContent = msg;
+    el.hidden = false;
+  }
+  function hideAuthError() {
+    const el = $("#auth-error");
+    el.hidden = true;
+    el.textContent = "";
+  }
+
+  async function submitAuth() {
+    const email = $("#auth-email").value.trim();
+    const password = $("#auth-password").value;
+    const password2 = $("#auth-password2").value;
+    const mode = state.auth.mode;
+    const btn = $("#auth-submit");
+
+    hideAuthError();
+
+    if (!email) { showAuthError("Bitte gib deine Email ein."); return; }
+
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = "…";
+
+    try {
+      if (mode === "login") {
+        if (!password) throw new Error("Bitte gib dein Passwort ein.");
+        await Store.auth.login(email, password);
+      } else if (mode === "register") {
+        if (password.length < 6) throw new Error("Passwort muss mindestens 6 Zeichen lang sein.");
+        if (password !== password2) throw new Error("Passwörter stimmen nicht überein.");
+        await Store.auth.register(email, password);
+      } else if (mode === "reset") {
+        await Store.auth.resetPassword(email);
+        showToast("Email zum Zurücksetzen versendet.");
+        state.auth.mode = "login";
+        renderAuth();
+      }
+    } catch (err) {
+      showAuthError(err.message || "Ein Fehler ist aufgetreten.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
   }
 
   /* ---------- Boxes view ---------- */
@@ -361,7 +456,24 @@
     const id = target.dataset.id;
 
     switch (action) {
+      case "auth-switch-mode":
+        e.preventDefault();
+        state.auth.mode = target.dataset.mode || "login";
+        renderAuth();
+        break;
+
+      case "auth-submit":
+        submitAuth();
+        break;
+
+      case "logout":
+        if (confirm("Wirklich abmelden?")) {
+          await Store.auth.logout();
+        }
+        break;
+
       case "go-home":
+        if (!Store.auth.currentUser()) return;
         state.currentCategoryId = null;
         setView("boxes");
         renderBoxes();
@@ -496,6 +608,15 @@
     $("#box-name").addEventListener("keydown", (e) => {
       if (e.key === "Enter") saveBox();
     });
+
+    // Auth: Enter submits
+    ["auth-email", "auth-password", "auth-password2"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); submitAuth(); }
+      });
+    });
   }
 
   /* ---------- Boot ---------- */
@@ -510,13 +631,39 @@
     });
   }
 
+  function handleAuthChange(user) {
+    const area = $("#user-area");
+    if (user) {
+      area.hidden = false;
+      $("#user-email").textContent = user.email || "";
+      if (state.view === "auth") {
+        setView("boxes");
+        renderBoxes();
+      }
+    } else {
+      area.hidden = true;
+      // Reset in-memory app state
+      state.currentCategoryId = null;
+      state.boxFilter = "";
+      state.cardFilter = "";
+      state.study = { deck: [], index: 0, correct: 0, wrong: 0, revealed: false };
+      state.auth.mode = "login";
+      closeModals();
+      setView("auth");
+      renderAuth();
+    }
+  }
+
   function init() {
     closeModals();
     bindEvents();
-    setView("boxes");
-    renderBoxes();
+    renderAuth();
+    setView("auth");
     if (window.Store && typeof window.Store.subscribe === "function") {
       window.Store.subscribe(scheduleRerender);
+    }
+    if (window.Store && window.Store.auth) {
+      window.Store.auth.onChange(handleAuthChange);
     }
   }
 

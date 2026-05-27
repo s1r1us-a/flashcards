@@ -1,6 +1,6 @@
 /* =============================================================================
  * Flashcards – Data Access Layer
- * Backed by Firebase Realtime Database.
+ * Backed by Firebase Realtime Database with per-user data isolation.
  * ========================================================================== */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -9,6 +9,11 @@ import { getAnalytics, isSupported as analyticsSupported }
 import {
   getDatabase, ref, onValue, set, update, remove,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import {
+  getAuth, onAuthStateChanged,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  sendPasswordResetEmail, signOut, setPersistence, browserLocalPersistence,
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDf19KTKfpjKZyLRR4guw18Em3B6FqoTp8",
@@ -21,8 +26,11 @@ const firebaseConfig = {
   measurementId: "G-Y3041VDZ3F",
 };
 
-const app = initializeApp(firebaseConfig);
-const db  = getDatabase(app);
+const app  = initializeApp(firebaseConfig);
+const db   = getDatabase(app);
+const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch((e) =>
+  console.warn("[Store] could not set auth persistence", e));
 
 analyticsSupported().then((ok) => { if (ok) getAnalytics(app); }).catch(() => {});
 
@@ -33,31 +41,82 @@ function uid(prefix) {
 }
 
 const cache = { categories: {}, cards: {} };
-const listeners = new Set();
+const dataListeners = new Set();
+const authListeners = new Set();
 let ready = { categories: false, cards: false };
+let currentUser = null;
+let unsubCategories = null;
+let unsubCards = null;
 
 function notify() {
-  listeners.forEach((cb) => {
+  dataListeners.forEach((cb) => {
     try { cb(cache); } catch (e) { console.error("[Store] listener error", e); }
   });
 }
 
-onValue(ref(db, "categories"), (snap) => {
-  cache.categories = snap.val() || {};
-  ready.categories = true;
-  notify();
-}, (err) => console.error("[Store] categories read failed", err));
+function notifyAuth() {
+  authListeners.forEach((cb) => {
+    try { cb(currentUser); } catch (e) { console.error("[Store] auth listener error", e); }
+  });
+}
 
-onValue(ref(db, "cards"), (snap) => {
-  cache.cards = snap.val() || {};
-  ready.cards = true;
+function userPath(suffix) {
+  if (!currentUser) throw new Error("Nicht eingeloggt");
+  return `users/${currentUser.uid}/${suffix}`;
+}
+
+function detachDataListeners() {
+  if (unsubCategories) { unsubCategories(); unsubCategories = null; }
+  if (unsubCards)      { unsubCards();      unsubCards = null; }
+  cache.categories = {};
+  cache.cards = {};
+  ready = { categories: false, cards: false };
+}
+
+function attachDataListeners(uidStr) {
+  unsubCategories = onValue(ref(db, `users/${uidStr}/categories`), (snap) => {
+    cache.categories = snap.val() || {};
+    ready.categories = true;
+    notify();
+  }, (err) => console.error("[Store] categories read failed", err));
+
+  unsubCards = onValue(ref(db, `users/${uidStr}/cards`), (snap) => {
+    cache.cards = snap.val() || {};
+    ready.cards = true;
+    notify();
+  }, (err) => console.error("[Store] cards read failed", err));
+}
+
+onAuthStateChanged(auth, (user) => {
+  detachDataListeners();
+  currentUser = user || null;
+  if (user) attachDataListeners(user.uid);
+  notifyAuth();
   notify();
-}, (err) => console.error("[Store] cards read failed", err));
+});
+
+/* ---------- auth-error translation ---------- */
+
+function translateAuthError(err) {
+  const code = err && err.code ? err.code : "";
+  switch (code) {
+    case "auth/invalid-email":         return "Ungültige Email-Adresse.";
+    case "auth/missing-password":      return "Bitte gib ein Passwort ein.";
+    case "auth/weak-password":         return "Passwort zu schwach (mind. 6 Zeichen).";
+    case "auth/email-already-in-use":  return "Diese Email ist bereits registriert.";
+    case "auth/user-not-found":        return "Kein Account mit dieser Email gefunden.";
+    case "auth/wrong-password":        return "Falsches Passwort.";
+    case "auth/invalid-credential":    return "Email oder Passwort ist falsch.";
+    case "auth/too-many-requests":     return "Zu viele Versuche – bitte später erneut probieren.";
+    case "auth/network-request-failed":return "Netzwerkfehler – ist deine Verbindung aktiv?";
+    default: return (err && err.message) || "Unbekannter Fehler.";
+  }
+}
 
 /* ---------- public API ---------- */
 
 const Store = {
-  isReady() { return ready.categories && ready.cards; },
+  isReady() { return !!currentUser && ready.categories && ready.cards; },
 
   async getCategories() {
     return Object.values(cache.categories).sort((a, b) => a.createdAt - b.createdAt);
@@ -76,7 +135,7 @@ const Store = {
     };
     cache.categories[cat.id] = cat;
     notify();
-    await set(ref(db, `categories/${cat.id}`), cat);
+    await set(ref(db, userPath(`categories/${cat.id}`)), cat);
     return cat;
   },
 
@@ -86,15 +145,15 @@ const Store = {
     const next = { ...current, ...patch };
     cache.categories[id] = next;
     notify();
-    await update(ref(db, `categories/${id}`), patch);
+    await update(ref(db, userPath(`categories/${id}`)), patch);
     return next;
   },
 
   async deleteCategory(id) {
     const updates = {};
-    updates[`categories/${id}`] = null;
+    updates[userPath(`categories/${id}`)] = null;
     Object.values(cache.cards).forEach((card) => {
-      if (card.categoryId === id) updates[`cards/${card.id}`] = null;
+      if (card.categoryId === id) updates[userPath(`cards/${card.id}`)] = null;
     });
     delete cache.categories[id];
     Object.keys(cache.cards).forEach((k) => {
@@ -125,7 +184,7 @@ const Store = {
     };
     cache.cards[card.id] = card;
     notify();
-    await set(ref(db, `cards/${card.id}`), card);
+    await set(ref(db, userPath(`cards/${card.id}`)), card);
     return card;
   },
 
@@ -135,14 +194,14 @@ const Store = {
     const next = { ...current, ...patch };
     cache.cards[id] = next;
     notify();
-    await update(ref(db, `cards/${id}`), patch);
+    await update(ref(db, userPath(`cards/${id}`)), patch);
     return next;
   },
 
   async deleteCard(id) {
     delete cache.cards[id];
     notify();
-    await remove(ref(db, `cards/${id}`));
+    await remove(ref(db, userPath(`cards/${id}`)));
   },
 
   async recordAnswer(cardId, correct) {
@@ -156,13 +215,51 @@ const Store = {
     };
     cache.cards[cardId] = { ...card, progress };
     notify();
-    await update(ref(db, `cards/${cardId}/progress`), progress);
+    await update(ref(db, userPath(`cards/${cardId}/progress`)), progress);
     return cache.cards[cardId];
   },
 
   subscribe(callback) {
-    listeners.add(callback);
-    return () => listeners.delete(callback);
+    dataListeners.add(callback);
+    return () => dataListeners.delete(callback);
+  },
+
+  auth: {
+    currentUser() { return currentUser; },
+
+    onChange(cb) {
+      authListeners.add(cb);
+      try { cb(currentUser); } catch (e) { console.error(e); }
+      return () => authListeners.delete(cb);
+    },
+
+    async login(email, password) {
+      try {
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+      } catch (err) {
+        throw new Error(translateAuthError(err));
+      }
+    },
+
+    async register(email, password) {
+      try {
+        await createUserWithEmailAndPassword(auth, email.trim(), password);
+      } catch (err) {
+        throw new Error(translateAuthError(err));
+      }
+    },
+
+    async resetPassword(email) {
+      try {
+        await sendPasswordResetEmail(auth, email.trim());
+      } catch (err) {
+        throw new Error(translateAuthError(err));
+      }
+    },
+
+    async logout() {
+      await signOut(auth);
+    },
   },
 };
 
