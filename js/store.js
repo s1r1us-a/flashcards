@@ -19,6 +19,7 @@ import {
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut, onAuthStateChanged, updateProfile,
+  setPersistence, browserLocalPersistence,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -35,6 +36,8 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const db   = getDatabase(app);
 const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence).catch((e) =>
+  console.warn("[Store] could not set auth persistence", e));
 
 analyticsSupported().then((ok) => { if (ok) getAnalytics(app); }).catch(() => {});
 

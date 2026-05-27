@@ -169,8 +169,93 @@ body {
 .crumbs {
   font-size: 14px;
   color: var(--muted);
+  flex: 1;
 }
 .crumbs span + span::before { content: " / "; padding: 0 6px; }
+
+.user-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.user-chip {
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+
+/* =========================================================================
+   Auth view
+   ========================================================================= */
+
+.auth-view {
+  display: grid;
+  place-items: center;
+  min-height: calc(100dvh - 200px);
+}
+.auth-card {
+  width: min(420px, 100%);
+  padding: 36px 32px;
+}
+.auth-head {
+  text-align: center;
+  margin-bottom: 22px;
+}
+.auth-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: white;
+  font-size: 22px;
+  margin-bottom: 14px;
+  box-shadow: 0 12px 32px rgba(139, 92, 246, 0.4);
+}
+.auth-head h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 700;
+}
+.auth-submit {
+  width: 100%;
+  padding: 13px;
+  font-size: 15px;
+  margin-top: 6px;
+}
+.auth-links {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.auth-links a {
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color var(--t-fast);
+}
+.auth-links a:hover { color: var(--accent); }
+.auth-sep { margin: 0 8px; opacity: 0.5; }
+
+.auth-error {
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fecaca;
+  font-size: 13px;
+}
 
 .app {
   position: relative;
