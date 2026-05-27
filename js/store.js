@@ -55,6 +55,10 @@ function startOfDay(ts) {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Max. Länge pro Kartenseite – schützt vor versehentlichem Einfügen von Megabyte-Texten
+// und damit vor kaputtem UI bzw. DB-Quota. 5000 Zeichen entsprechen ~ einer A4-Seite.
+const MAX_CARD_FIELD = 5000;
+
 /* ---------- state ---------- */
 
 const cache = {
@@ -81,6 +85,21 @@ function notifyAuth() {
   authListeners.forEach((cb) => {
     try { cb(currentUser); } catch (e) { console.error("[Store] auth listener error", e); }
   });
+}
+
+// Optimistisches Cache-Update mit Rollback. `apply` mutiert den Cache sofort + notify,
+// `write` ist der eigentliche Firebase-Schreibvorgang. Wenn `write` wirft, wird
+// `rollback` ausgeführt und der Fehler weitergereicht, damit die UI einen Toast zeigen kann.
+async function withOptimistic({ apply, rollback, write }) {
+  apply();
+  notify();
+  try {
+    return await write();
+  } catch (err) {
+    try { rollback(); } catch (e) { console.error("[Store] rollback failed", e); }
+    notify();
+    throw err;
+  }
 }
 
 // Promise die resolved, sobald Firebase Auth einmalig den gespeicherten
@@ -616,9 +635,11 @@ const Store = {
       installCount: 0,
       createdAt: Date.now(),
     };
-    cache.categories[cat.id] = cat;
-    notify();
-    await set(ref(db, `categories/${cat.id}`), cat);
+    await withOptimistic({
+      apply:    () => { cache.categories[cat.id] = cat; },
+      rollback: () => { delete cache.categories[cat.id]; },
+      write:    () => set(ref(db, `categories/${cat.id}`), cat),
+    });
     return cat;
   },
 
@@ -638,9 +659,11 @@ const Store = {
     Object.assign(cleanPatch, auditPatch());
 
     const next = { ...current, ...cleanPatch };
-    cache.categories[id] = next;
-    notify();
-    await update(ref(db, `categories/${id}`), cleanPatch);
+    await withOptimistic({
+      apply:    () => { cache.categories[id] = next; },
+      rollback: () => { cache.categories[id] = current; },
+      write:    () => update(ref(db, `categories/${id}`), cleanPatch),
+    });
     return next;
   },
 
@@ -663,15 +686,25 @@ const Store = {
     }
     const updates = {};
     updates[`categories/${id}`] = null;
+    const removedCards = {};
     Object.values(cache.cards).forEach((card) => {
-      if (card && card.categoryId === id) updates[`cards/${card.id}`] = null;
+      if (card && card.categoryId === id) {
+        updates[`cards/${card.id}`] = null;
+        removedCards[card.id] = card;
+      }
     });
-    delete cache.categories[id];
-    Object.keys(cache.cards).forEach((k) => {
-      if (cache.cards[k] && cache.cards[k].categoryId === id) delete cache.cards[k];
+    const removedCat = cat;
+    await withOptimistic({
+      apply: () => {
+        delete cache.categories[id];
+        Object.keys(removedCards).forEach((k) => { delete cache.cards[k]; });
+      },
+      rollback: () => {
+        if (removedCat) cache.categories[id] = removedCat;
+        Object.entries(removedCards).forEach(([k, v]) => { cache.cards[k] = v; });
+      },
+      write: () => update(ref(db), updates),
     });
-    notify();
-    await update(ref(db), updates);
   },
 
   /* --- Bibliothek (Verknüpfung) --- */
@@ -680,13 +713,28 @@ const Store = {
     const cat = cache.categories[categoryId];
     if (!cat || !cat.published) throw new Error("Box nicht verfügbar");
     if (cat.ownerId === user.uid) return; // eigene Box ist immer in der Bibliothek
-
     if (cache.userLibrary[categoryId]) return; // schon drin
+
+    // Reihenfolge bewusst: erst installCount-Increment, dann Library-Eintrag, dann Cache.
+    // Falls (2) fehlschlägt, rollen wir (1) per zweiter Transaction zurück, sodass
+    // der Counter nicht versehentlich zu hoch bleibt.
+    await runTransaction(
+      ref(db, `categories/${categoryId}/installCount`),
+      (v) => (typeof v === "number" ? v : 0) + 1,
+    );
+    try {
+      await set(ref(db, `userLibrary/${user.uid}/${categoryId}`), true);
+    } catch (err) {
+      try {
+        await runTransaction(
+          ref(db, `categories/${categoryId}/installCount`),
+          (v) => Math.max(0, (typeof v === "number" ? v : 0) - 1),
+        );
+      } catch (e) { console.error("[Store] installCount rollback failed", e); }
+      throw err;
+    }
     cache.userLibrary[categoryId] = true;
     notify();
-    await set(ref(db, `userLibrary/${user.uid}/${categoryId}`), true);
-    await runTransaction(ref(db, `categories/${categoryId}/installCount`),
-      (v) => (typeof v === "number" ? v : 0) + 1);
   },
 
   async removeFromLibrary(categoryId) {
@@ -698,11 +746,25 @@ const Store = {
       // eigene Box -> komplett löschen
       return Store.deleteCategory(categoryId);
     }
+    if (!cache.userLibrary[categoryId]) return; // war nicht drin
+
+    await runTransaction(
+      ref(db, `categories/${categoryId}/installCount`),
+      (v) => Math.max(0, (typeof v === "number" ? v : 0) - 1),
+    );
+    try {
+      await remove(ref(db, `userLibrary/${user.uid}/${categoryId}`));
+    } catch (err) {
+      try {
+        await runTransaction(
+          ref(db, `categories/${categoryId}/installCount`),
+          (v) => (typeof v === "number" ? v : 0) + 1,
+        );
+      } catch (e) { console.error("[Store] installCount rollback failed", e); }
+      throw err;
+    }
     delete cache.userLibrary[categoryId];
     notify();
-    await remove(ref(db, `userLibrary/${user.uid}/${categoryId}`));
-    await runTransaction(ref(db, `categories/${categoryId}/installCount`),
-      (v) => Math.max(0, (typeof v === "number" ? v : 0) - 1));
   },
 
   /* --- Karten --- */
@@ -728,28 +790,45 @@ const Store = {
 
   async addCard(categoryId, front, back) {
     requireUser();
+    if (!cache.categories[categoryId]) throw new Error("Box nicht gefunden");
     if (!canEditBox(categoryId)) throw new Error("Diese Box ist schreibgeschützt");
+    const frontStr = (front || "").trim();
+    const backStr  = (back  || "").trim();
+    if (frontStr.length > MAX_CARD_FIELD || backStr.length > MAX_CARD_FIELD) {
+      throw new Error(`Karteninhalt zu lang (max. ${MAX_CARD_FIELD} Zeichen pro Seite)`);
+    }
     const card = {
       id: uid("card"),
       categoryId,
-      front: (front || "").trim(),
-      back: (back || "").trim(),
+      front: frontStr,
+      back:  backStr,
       createdAt: Date.now(),
     };
-    cache.cards[card.id] = card;
     const audit = auditPatch();
-    cache.categories[categoryId] = { ...cache.categories[categoryId], ...audit };
-    notify();
+    const prevCat = cache.categories[categoryId];
+    const nextCat = { ...prevCat, ...audit };
     const updates = {};
     updates[`cards/${card.id}`] = card;
     updates[`categories/${categoryId}/lastModifiedBy`] = audit.lastModifiedBy;
     updates[`categories/${categoryId}/lastModifiedAt`] = audit.lastModifiedAt;
-    await update(ref(db), updates);
+
+    await withOptimistic({
+      apply: () => {
+        cache.cards[card.id] = card;
+        cache.categories[categoryId] = nextCat;
+      },
+      rollback: () => {
+        delete cache.cards[card.id];
+        cache.categories[categoryId] = prevCat;
+      },
+      write: () => update(ref(db), updates),
+    });
     return card;
   },
 
   async addCardsBatch(categoryId, items) {
     requireUser();
+    if (!cache.categories[categoryId]) throw new Error("Box nicht gefunden");
     if (!canEditBox(categoryId)) throw new Error("Diese Box ist schreibgeschützt");
     const created = [];
     const updates = {};
@@ -757,6 +836,9 @@ const Store = {
       const front = (it && it.front || "").trim();
       const back = (it && it.back || "").trim();
       if (!front && !back) continue;
+      if (front.length > MAX_CARD_FIELD || back.length > MAX_CARD_FIELD) {
+        throw new Error(`Karteninhalt zu lang (max. ${MAX_CARD_FIELD} Zeichen pro Seite)`);
+      }
       const card = {
         id: uid("card"),
         categoryId,
@@ -764,17 +846,27 @@ const Store = {
         back,
         createdAt: Date.now(),
       };
-      cache.cards[card.id] = card;
       updates[`cards/${card.id}`] = card;
       created.push(card);
     }
     if (created.length === 0) return [];
     const audit = auditPatch();
-    cache.categories[categoryId] = { ...cache.categories[categoryId], ...audit };
+    const prevCat = cache.categories[categoryId];
+    const nextCat = { ...prevCat, ...audit };
     updates[`categories/${categoryId}/lastModifiedBy`] = audit.lastModifiedBy;
     updates[`categories/${categoryId}/lastModifiedAt`] = audit.lastModifiedAt;
-    notify();
-    await update(ref(db), updates);
+
+    await withOptimistic({
+      apply: () => {
+        created.forEach((c) => { cache.cards[c.id] = c; });
+        cache.categories[categoryId] = nextCat;
+      },
+      rollback: () => {
+        created.forEach((c) => { delete cache.cards[c.id]; });
+        cache.categories[categoryId] = prevCat;
+      },
+      write: () => update(ref(db), updates),
+    });
     return created;
   },
 
@@ -782,20 +874,38 @@ const Store = {
     requireUser();
     const current = cache.cards[id];
     if (!current) return null;
+    if (!cache.categories[current.categoryId]) throw new Error("Box nicht gefunden");
     if (!canEditBox(current.categoryId)) throw new Error("Diese Karte ist schreibgeschützt");
     const allowed = ["front", "back"];
     const cleanPatch = {};
-    for (const k of allowed) if (k in patch) cleanPatch[k] = patch[k];
+    for (const k of allowed) {
+      if (!(k in patch)) continue;
+      const v = (patch[k] || "").trim();
+      if (v.length > MAX_CARD_FIELD) {
+        throw new Error(`Karteninhalt zu lang (max. ${MAX_CARD_FIELD} Zeichen pro Seite)`);
+      }
+      cleanPatch[k] = v;
+    }
     const next = { ...current, ...cleanPatch };
-    cache.cards[id] = next;
     const audit = auditPatch();
-    cache.categories[current.categoryId] = { ...cache.categories[current.categoryId], ...audit };
-    notify();
+    const prevCat = cache.categories[current.categoryId];
+    const nextCat = { ...prevCat, ...audit };
     const updates = {};
     Object.entries(cleanPatch).forEach(([k, v]) => { updates[`cards/${id}/${k}`] = v; });
     updates[`categories/${current.categoryId}/lastModifiedBy`] = audit.lastModifiedBy;
     updates[`categories/${current.categoryId}/lastModifiedAt`] = audit.lastModifiedAt;
-    await update(ref(db), updates);
+
+    await withOptimistic({
+      apply: () => {
+        cache.cards[id] = next;
+        cache.categories[current.categoryId] = nextCat;
+      },
+      rollback: () => {
+        cache.cards[id] = current;
+        cache.categories[current.categoryId] = prevCat;
+      },
+      write: () => update(ref(db), updates),
+    });
     return next;
   },
 
@@ -803,16 +913,27 @@ const Store = {
     requireUser();
     const current = cache.cards[id];
     if (!current) return;
+    if (!cache.categories[current.categoryId]) throw new Error("Box nicht gefunden");
     if (!canEditBox(current.categoryId)) throw new Error("Diese Karte ist schreibgeschützt");
-    delete cache.cards[id];
     const audit = auditPatch();
-    cache.categories[current.categoryId] = { ...cache.categories[current.categoryId], ...audit };
-    notify();
+    const prevCat = cache.categories[current.categoryId];
+    const nextCat = { ...prevCat, ...audit };
     const updates = {};
     updates[`cards/${id}`] = null;
     updates[`categories/${current.categoryId}/lastModifiedBy`] = audit.lastModifiedBy;
     updates[`categories/${current.categoryId}/lastModifiedAt`] = audit.lastModifiedAt;
-    await update(ref(db), updates);
+
+    await withOptimistic({
+      apply: () => {
+        delete cache.cards[id];
+        cache.categories[current.categoryId] = nextCat;
+      },
+      rollback: () => {
+        cache.cards[id] = current;
+        cache.categories[current.categoryId] = prevCat;
+      },
+      write: () => update(ref(db), updates),
+    });
   },
 
   /* --- Lernen --- */
@@ -822,29 +943,47 @@ const Store = {
     const user = requireUser();
     const card = cache.cards[cardId];
     if (!card) return null;
-    const prev = progressWithDefaults(cache.userProgress[cardId]);
-    const srs = srsNext(prev, correct);
-    const progress = {
-      seen:    prev.seen + 1,
-      correct: prev.correct + (correct ? 1 : 0),
-      wrong:   prev.wrong + (correct ? 0 : 1),
-      lastReviewed: Date.now(),
-      ease: srs.ease,
-      interval: srs.interval,
-      repetitions: srs.repetitions,
-      dueAt: srs.dueAt,
-    };
-    cache.userProgress[cardId] = progress;
-    notify();
-    await set(ref(db, `userProgress/${user.uid}/${cardId}`), progress);
 
-    // Streak-Rekord ggf. aktualisieren
-    const newStreak = computeCurrentStreak(cache.userProgress);
-    const me = cache.users[user.uid] || {};
-    if (newStreak > (me.longestStreak || 0)) {
-      await update(ref(db, `users/${user.uid}`), { longestStreak: newStreak });
-    }
-    return { ...card, progress };
+    // Transaction statt set(): wenn der User in zwei Tabs/Geräten parallel
+    // dieselbe Karte beantwortet, sieht der Updater den aktuellen Server-Wert
+    // statt der lokalen Cache-Kopie – der seen-Counter divergiert nicht mehr.
+    let finalProgress = null;
+    const tx = await runTransaction(
+      ref(db, `userProgress/${user.uid}/${cardId}`),
+      (server) => {
+        const prev = progressWithDefaults(server);
+        const srs = srsNext(prev, correct);
+        finalProgress = {
+          seen:    prev.seen + 1,
+          correct: prev.correct + (correct ? 1 : 0),
+          wrong:   prev.wrong + (correct ? 0 : 1),
+          lastReviewed: Date.now(),
+          ease: srs.ease,
+          interval: srs.interval,
+          repetitions: srs.repetitions,
+          dueAt: srs.dueAt,
+        };
+        return finalProgress;
+      },
+    );
+    if (!tx.committed) throw new Error("Antwort konnte nicht gespeichert werden");
+    // Cache übernimmt der onValue-Listener; für sofortige UI-Reaktion (z.B. nächste
+    // Karte fällig) setzen wir den Wert vorsorglich – der Listener-Snapshot
+    // überschreibt ihn gleich konsistent.
+    cache.userProgress[cardId] = finalProgress;
+    notify();
+
+    // Streak-Rekord ggf. aktualisieren (best effort – Fehler schlucken,
+    // damit die Antwort nicht fälschlich als "fehlgeschlagen" gilt).
+    try {
+      const newStreak = computeCurrentStreak(cache.userProgress);
+      const me = cache.users[user.uid] || {};
+      if (newStreak > (me.longestStreak || 0)) {
+        await update(ref(db, `users/${user.uid}`), { longestStreak: newStreak });
+      }
+    } catch (e) { console.error("[Store] streak update failed", e); }
+
+    return { ...card, progress: finalProgress };
   },
 
   /* --- Profil --- */
@@ -865,9 +1004,9 @@ const Store = {
     const n = String(newName == null ? "" : newName).trim();
     if (!n) throw new Error("Anzeigename darf nicht leer sein");
     if (n.length > 40) throw new Error("Anzeigename ist zu lang (max. 40 Zeichen)");
-    if (cache.users[user.uid] && cache.users[user.uid].displayName === n) {
-      return n; // nichts zu tun
-    }
+    // Kein Cache-Vergleich mehr: der Cache kann hinter der DB zurückliegen
+    // (z. B. nach Reauth), und ein vermeintlich "schon gesetzter" Name würde
+    // einen DB-Stand mit anderem Wert silently durchwinken.
     await update(ref(db, `users/${user.uid}`), { displayName: n });
     currentUser = { ...currentUser, displayName: n };
     if (cache.users[user.uid]) {
@@ -891,6 +1030,19 @@ const Store = {
   subscribe(callback) {
     dataListeners.add(callback);
     return () => dataListeners.delete(callback);
+  },
+
+  // Firebase-eigener Connection-Status. Liefert true, sobald der Realtime-DB-Socket
+  // verbunden ist, false bei Verbindungsverlust. Wird vom UI für das Offline-Banner
+  // genutzt – ergänzt das Browser-`online`/`offline`-Event um den Fall "Browser
+  // sagt online, Firebase ist trotzdem nicht erreichbar" (z. B. Firewall, DNS).
+  subscribeConnection(callback) {
+    const r = ref(db, ".info/connected");
+    const unsub = onValue(r, (snap) => {
+      try { callback(snap.val() === true); }
+      catch (e) { console.error("[Store] connection listener error", e); }
+    });
+    return unsub;
   },
 };
 
