@@ -15,6 +15,9 @@
     view: "auth",
     authMode: "login",
     currentCategoryId: null,
+    viewedUserId: null,
+    cardsListExpanded: false,
+    editingDisplayName: false,
     boxFilter: "",
     cardFilter: "",
     shopFilter: "",
@@ -68,6 +71,12 @@
 
   /* ---------- View routing ---------- */
   function setView(name) {
+    if (state.view === "cards" && name !== "cards") {
+      state.cardsListExpanded = false;
+    }
+    if (state.view === "profile" && name !== "profile") {
+      state.editingDisplayName = false;
+    }
     state.view = name;
     $$(".view").forEach((v) => {
       v.hidden = v.dataset.view !== name;
@@ -101,6 +110,12 @@
     if (!Store.getCurrentUser()) { el.innerHTML = ""; return; }
     if (state.view === "boxes" || state.view === "shop" || state.view === "community" || state.view === "profile" || state.view === "auth") {
       el.innerHTML = "";
+      return;
+    }
+    if (state.view === "user-profile") {
+      const u = state.viewedUserId ? Store.getUser(state.viewedUserId) : null;
+      const name = (u && u.displayName) || "Profil";
+      el.innerHTML = `<span>Community</span><span>${escapeHtml(name)}</span>`;
       return;
     }
     const cat = state.currentCategoryId
@@ -340,7 +355,8 @@
       const isMe = u.uid === me.uid;
       const since = u.createdAt ? `Mitglied seit ${formatDate(u.createdAt)}` : "Mitglied";
       return `
-        <div class="user-list-row">
+        <div class="user-list-row is-clickable" data-action="view-user-profile" data-uid="${u.uid}"
+             role="button" tabindex="0" aria-label="Profil von ${escapeHtml(u.displayName)}">
           <div class="avatar">${initial}</div>
           <div class="user-list-info">
             <div class="user-list-name">${escapeHtml(u.displayName)}${isMe ? ' <span class="badge is-me">Du</span>' : ""}</div>
@@ -348,6 +364,79 @@
           </div>
         </div>`;
     }).join("");
+  }
+
+  /* ---------- User profile view (read-only, aus Community) ---------- */
+  async function renderUserProfile(uid) {
+    const el = $("#user-profile-content");
+    if (!uid) { el.innerHTML = ""; return; }
+    const stats = await Store.getPublicProfileStats(uid);
+    if (!stats) {
+      el.innerHTML = `
+        <div class="glass profile-section">
+          <p class="muted">Dieses Profil ist nicht verfügbar.</p>
+        </div>`;
+      return;
+    }
+
+    const u = stats.user;
+    const c = stats.community;
+    const mostInst = c.mostInstalledBox;
+    const initial = escapeHtml((u.displayName || "?").slice(0, 1).toUpperCase());
+
+    el.innerHTML = `
+      <div class="profile-grid">
+
+        <section class="glass profile-section">
+          <h2>Account</h2>
+          <div class="account-info">
+            <div class="avatar">${initial}</div>
+            <div>
+              <div class="account-name"><span>${escapeHtml(u.displayName)}</span></div>
+              <div class="muted small">Mitglied seit ${formatDate(u.createdAt)}</div>
+              <div class="muted small">Längste Streak: ${u.longestStreak || 0} 🔥</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass profile-section">
+          <h2>Bibliothek</h2>
+          <div class="stat-row">
+            <div class="stat-cell">
+              <div class="stat-value">${stats.library.ownCount}</div>
+              <div class="stat-label">Eigene Boxen</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-value">${stats.library.publishedCount}</div>
+              <div class="stat-label">Im Shop</div>
+            </div>
+          </div>
+          <p class="muted small">Lernfortschritt bleibt privat.</p>
+        </section>
+
+        <section class="glass profile-section profile-learning">
+          <h2>Community-Impact</h2>
+          <div class="stat-row">
+            <div class="stat-cell">
+              <div class="stat-value">${c.publishedCount}</div>
+              <div class="stat-label">Veröffentlicht</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-value">${c.totalInstalls}</div>
+              <div class="stat-label">Hinzugefügt von anderen</div>
+            </div>
+          </div>
+          ${mostInst ? `
+            <div class="profile-row">
+              <span class="muted">Beliebteste Box:</span>
+              <span class="pill" style="--tile-color:${mostInst.color}">
+                <span class="pill-dot"></span>${escapeHtml(mostInst.name)} · ${mostInst.installCount || 0}×
+              </span>
+            </div>` : `
+            <p class="muted small">Noch keine Box im Shop veröffentlicht.</p>`}
+        </section>
+
+      </div>`;
   }
 
   /* ---------- Profile view ---------- */
@@ -445,8 +534,22 @@
           <h2>Account</h2>
           <div class="account-info">
             <div class="avatar">${escapeHtml((stats.user.displayName || "?").slice(0, 1).toUpperCase())}</div>
-            <div>
-              <div class="account-name">${escapeHtml(stats.user.displayName)}</div>
+            <div class="account-info-text">
+              ${state.editingDisplayName ? `
+                <div class="edit-name-form">
+                  <input class="input" id="display-name-input" type="text"
+                         maxlength="40" value="${escapeHtml(stats.user.displayName || "")}"
+                         autocomplete="nickname" />
+                  <button class="btn primary btn-sm" data-action="save-display-name">Speichern</button>
+                  <button class="btn ghost btn-sm" data-action="cancel-display-name">Abbrechen</button>
+                </div>
+              ` : `
+                <div class="account-name">
+                  <span>${escapeHtml(stats.user.displayName)}</span>
+                  <button class="icon-btn" data-action="edit-name"
+                          aria-label="Anzeigename ändern" title="Anzeigename ändern">✎</button>
+                </div>
+              `}
               <div class="muted">${escapeHtml(stats.user.email)}</div>
               <div class="muted small">Mitglied seit ${formatDate(stats.user.createdAt)}</div>
             </div>
@@ -542,6 +645,38 @@
         </section>
 
       </div>`;
+
+    if (state.editingDisplayName) {
+      const input = $("#display-name-input");
+      if (input) {
+        if (!matchMedia("(pointer: coarse)").matches) {
+          setTimeout(() => { input.focus(); input.select(); }, 30);
+        }
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); saveDisplayName(); }
+          if (e.key === "Escape") { e.preventDefault(); cancelDisplayName(); }
+        });
+      }
+    }
+  }
+
+  async function saveDisplayName() {
+    const input = $("#display-name-input");
+    if (!input) return;
+    const value = input.value.trim();
+    try {
+      await Store.updateDisplayName(value);
+      state.editingDisplayName = false;
+      showToast("Anzeigename aktualisiert");
+      renderProfile();
+    } catch (err) {
+      showToast(err.message || "Fehler beim Speichern");
+    }
+  }
+
+  function cancelDisplayName() {
+    state.editingDisplayName = false;
+    renderProfile();
   }
 
   /* ---------- Cards view ---------- */
@@ -572,6 +707,9 @@
     meta.innerHTML = `${cards.length} Karte${cards.length === 1 ? "" : "n"}`
       + (dueCount ? ` <span class="badge is-due">${dueCount} fällig</span>` : "")
       + (newCount ? ` <span class="badge is-new">${newCount} neu</span>` : "");
+
+    renderBoxStatsBanner(cat, cards.length);
+    renderCardsCollapsibleToggle(cards.length);
 
     if (isOwn) {
       authorEl.hidden = true;
@@ -671,6 +809,102 @@
             ${card.progress.seen}× geübt · ${acc}% richtig</div>` : ""}
         </div>`;
     }).join("");
+  }
+
+  async function renderBoxStatsBanner(cat, cardCount) {
+    const banner = $("#box-stats-banner");
+    if (!banner) return;
+    if (cardCount === 0) {
+      banner.hidden = true;
+      banner.innerHTML = "";
+      return;
+    }
+    const s = await Store.getBoxStats(cat.id);
+    if (!s) { banner.hidden = true; banner.innerHTML = ""; return; }
+
+    const pct = (v) => v === null ? "–" : Math.round(v * 100) + "%";
+    const masteryPct = s.masteryScore !== null ? Math.round(s.masteryScore * 100) : null;
+    const masteryColor = masteryPct === null ? "var(--muted)"
+                       : masteryPct >= 75    ? "var(--success)"
+                       : masteryPct >= 50    ? "var(--accent)"
+                                              : "var(--danger)";
+    const accuracy = s.overallAccuracy;
+    const accColor = accuracy === null ? "var(--muted)"
+                   : accuracy >= 0.75  ? "var(--success)"
+                   : accuracy >= 0.5   ? "var(--accent)"
+                                        : "var(--danger)";
+
+    const summary = s.seenCount === 0
+      ? `<p class="muted small" style="margin:0">Noch keine Karten beantwortet — starte „Lernen", um deinen Fortschritt zu sehen.</p>`
+      : "";
+
+    banner.hidden = false;
+    banner.style.setProperty("--tile-color", cat.color || "var(--accent)");
+    banner.innerHTML = `
+      <div class="box-stats-head">
+        <span class="pill-dot"></span>
+        <span class="box-stats-title">Dein Fortschritt</span>
+      </div>
+      <div class="box-stats-grid">
+        <div class="box-stats-cell">
+          <div class="box-stats-value" style="color:${accColor}">${pct(accuracy)}</div>
+          <div class="box-stats-label">Trefferquote</div>
+        </div>
+        <div class="box-stats-cell">
+          <div class="box-stats-value" style="color:${masteryColor}">${masteryPct === null ? "–" : masteryPct + "%"}</div>
+          <div class="box-stats-label">Mastery</div>
+        </div>
+        <div class="box-stats-cell">
+          <div class="box-stats-value">${s.avgEase === null ? "–" : s.avgEase.toFixed(2)}</div>
+          <div class="box-stats-label">Ø Ease</div>
+        </div>
+        <div class="box-stats-cell">
+          <div class="box-stats-value">${s.dueCount}</div>
+          <div class="box-stats-label">Fällig</div>
+        </div>
+        <div class="box-stats-cell">
+          <div class="box-stats-value">${s.newCount}</div>
+          <div class="box-stats-label">Neu</div>
+        </div>
+        <div class="box-stats-cell">
+          <div class="box-stats-value">${s.seenCount}</div>
+          <div class="box-stats-label">Antworten</div>
+        </div>
+      </div>
+      ${summary}
+    `;
+  }
+
+  function renderCardsCollapsibleToggle(cardCount) {
+    const toggle = $("#cards-toggle");
+    const wrap = $("#cards-collapsible");
+    if (!toggle || !wrap) return;
+    if (cardCount === 0) {
+      // Empty-State sichtbar machen, Toggle ausblenden
+      toggle.hidden = true;
+      wrap.classList.remove("is-collapsed");
+      return;
+    }
+    // Wenn der Nutzer aktiv sucht, Liste automatisch ausklappen
+    if (state.cardFilter.trim()) state.cardsListExpanded = true;
+    toggle.hidden = false;
+    const expanded = !!state.cardsListExpanded;
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.textContent = `${expanded ? "Karten ausblenden" : "Karten anzeigen"} (${cardCount})`;
+    wrap.classList.toggle("is-collapsed", !expanded);
+  }
+
+  function toggleCardsList() {
+    state.cardsListExpanded = !state.cardsListExpanded;
+    const toggle = $("#cards-toggle");
+    const wrap = $("#cards-collapsible");
+    if (!toggle || !wrap) return;
+    const expanded = state.cardsListExpanded;
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    const grid = $("#cards-grid");
+    const total = grid ? grid.children.length : 0;
+    toggle.textContent = `${expanded ? "Karten ausblenden" : "Karten anzeigen"} (${total})`;
+    wrap.classList.toggle("is-collapsed", !expanded);
   }
 
   /* ---------- Modals ---------- */
@@ -1119,6 +1353,39 @@
         renderProfile();
         break;
 
+      case "view-user-profile": {
+        if (!Store.getCurrentUser()) return;
+        const targetUid = target.dataset.uid;
+        if (!targetUid) return;
+        const me = Store.getCurrentUser();
+        if (me && targetUid === me.uid) {
+          setView("profile");
+          renderProfile();
+        } else {
+          state.viewedUserId = targetUid;
+          setView("user-profile");
+          renderUserProfile(targetUid);
+        }
+        break;
+      }
+
+      case "toggle-cards-list":
+        toggleCardsList();
+        break;
+
+      case "edit-name":
+        state.editingDisplayName = true;
+        renderProfile();
+        break;
+
+      case "save-display-name":
+        saveDisplayName();
+        break;
+
+      case "cancel-display-name":
+        cancelDisplayName();
+        break;
+
       case "new-box":
         openBoxModal();
         break;
@@ -1324,6 +1591,15 @@
   function bindEvents() {
     document.addEventListener("click", handleClick);
 
+    // Tastatur-Aktivierung für a11y-Buttons (z.B. User-Zeile in Community)
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const t = e.target.closest('[data-action][role="button"]');
+      if (!t) return;
+      e.preventDefault();
+      t.click();
+    });
+
     // Auth-Formular Submit (Enter)
     $("#auth-form").addEventListener("submit", (e) => { e.preventDefault(); submitAuth(); });
 
@@ -1428,6 +1704,7 @@
       else if (state.view === "shop")  renderShop();
       else if (state.view === "community") renderCommunity();
       else if (state.view === "profile") renderProfile();
+      else if (state.view === "user-profile") renderUserProfile(state.viewedUserId);
     });
   }
 
@@ -1441,6 +1718,7 @@
         updateNav();
         if (state.view === "profile") renderProfile();
         else if (state.view === "community") renderCommunity();
+        else if (state.view === "user-profile") renderUserProfile(state.viewedUserId);
       }
     } else {
       state.currentCategoryId = null;
