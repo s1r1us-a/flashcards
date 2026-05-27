@@ -18,6 +18,7 @@
     boxFilter: "",
     cardFilter: "",
     shopFilter: "",
+    communityFilter: "",
     modal: { type: null, editingId: null, color: SWATCHES[0] },
     study: { deck: [], index: 0, correct: 0, wrong: 0, revealed: false },
   };
@@ -88,7 +89,7 @@
     nav.hidden = false;
     userArea.hidden = false;
     $("#user-name").textContent = user.displayName;
-    const mapping = { boxes: "goto-boxes", shop: "goto-shop", profile: "goto-profile" };
+    const mapping = { boxes: "goto-boxes", shop: "goto-shop", community: "goto-community", profile: "goto-profile" };
     const active = mapping[state.view];
     $$(".nav-tab").forEach((b) => {
       b.classList.toggle("is-active", b.dataset.action === active);
@@ -98,7 +99,7 @@
   async function renderCrumbs() {
     const el = $("#crumbs");
     if (!Store.getCurrentUser()) { el.innerHTML = ""; return; }
-    if (state.view === "boxes" || state.view === "shop" || state.view === "profile" || state.view === "auth") {
+    if (state.view === "boxes" || state.view === "shop" || state.view === "community" || state.view === "profile" || state.view === "auth") {
       el.innerHTML = "";
       return;
     }
@@ -307,6 +308,43 @@
           <div class="shop-tile-footer">
             <span class="box-tile-meta">${count} Karte${count === 1 ? "" : "n"}</span>
             ${btn}
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  /* ---------- Community view ---------- */
+  async function renderCommunity() {
+    const me = Store.getCurrentUser();
+    if (!me) return;
+
+    const list = $("#community-list");
+    const empty = $("#community-empty");
+    const all = Store.getAllUsers()
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    if (all.length <= 1) {
+      list.innerHTML = "";
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+
+    const filter = state.communityFilter.trim().toLowerCase();
+    const filtered = filter
+      ? all.filter((u) => (u.displayName || "").toLowerCase().includes(filter))
+      : all;
+
+    list.innerHTML = filtered.map((u) => {
+      const initial = escapeHtml((u.displayName || "?").slice(0, 1).toUpperCase());
+      const isMe = u.uid === me.uid;
+      const since = u.createdAt ? `Mitglied seit ${formatDate(u.createdAt)}` : "Mitglied";
+      return `
+        <div class="user-list-row">
+          <div class="avatar">${initial}</div>
+          <div class="user-list-info">
+            <div class="user-list-name">${escapeHtml(u.displayName)}${isMe ? ' <span class="badge is-me">Du</span>' : ""}</div>
+            <div class="user-list-meta">${since}</div>
           </div>
         </div>`;
     }).join("");
@@ -1069,6 +1107,12 @@
         renderShop();
         break;
 
+      case "goto-community":
+        if (!Store.getCurrentUser()) return;
+        setView("community");
+        renderCommunity();
+        break;
+
       case "goto-profile":
         if (!Store.getCurrentUser()) return;
         setView("profile");
@@ -1308,6 +1352,7 @@
     onSearch("#search-boxes", (e) => { state.boxFilter  = e.target.value; renderBoxes(); });
     onSearch("#search-cards", (e) => { state.cardFilter = e.target.value; renderCards(); });
     onSearch("#search-shop",  (e) => { state.shopFilter = e.target.value; renderShop();  });
+    onSearch("#search-community", (e) => { state.communityFilter = e.target.value; renderCommunity(); });
 
     // Import-Preview live updaten
     const importText = $("#import-text");
@@ -1381,6 +1426,7 @@
       if (state.view === "boxes")   renderBoxes();
       else if (state.view === "cards") renderCards();
       else if (state.view === "shop")  renderShop();
+      else if (state.view === "community") renderCommunity();
       else if (state.view === "profile") renderProfile();
     });
   }
@@ -1394,6 +1440,7 @@
       } else {
         updateNav();
         if (state.view === "profile") renderProfile();
+        else if (state.view === "community") renderCommunity();
       }
     } else {
       state.currentCategoryId = null;

@@ -766,6 +766,12 @@ const Store = {
 
   getUser(uid) { return cache.users[uid] || null; },
 
+  getAllUsers() {
+    return Object.entries(cache.users || {})
+      .map(([uid, u]) => ({ uid, ...u }))
+      .filter((u) => u && u.displayName);
+  },
+
   /* --- Subscriptions --- */
   subscribe(callback) {
     dataListeners.add(callback);
