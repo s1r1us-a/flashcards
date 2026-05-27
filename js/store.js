@@ -97,6 +97,15 @@ onValue(ref(db, "cards"), (snap) => {
 
 onValue(ref(db, "users"), (snap) => {
   cache.users = snap.val() || {};
+  // Wenn der eigene displayName erst nach dem Auth-State-Change in die DB geschrieben
+  // wurde (z.B. direkt nach der Registrierung), holen wir ihn jetzt nach.
+  if (currentUser) {
+    const dbName = cache.users[currentUser.uid] && cache.users[currentUser.uid].displayName;
+    if (dbName && dbName !== currentUser.displayName) {
+      currentUser = { ...currentUser, displayName: dbName };
+      notifyAuth();
+    }
+  }
   notify();
 }, (err) => console.error("[Store] users read failed", err));
 
@@ -129,10 +138,14 @@ function detachUserListeners() {
 onAuthStateChanged(auth, (user) => {
   detachUserListeners();
   if (user) {
+    // Priorität: bereits gecachter DB-Name > Firebase-Auth-Profile-Name > Email-Prefix.
+    // Der DB-Name ist die "wahre" Quelle (von uns gesetzt), die anderen sind Fallbacks
+    // bis der users-Listener den ersten Snapshot geliefert hat.
+    const dbName = cache.users[user.uid] && cache.users[user.uid].displayName;
     currentUser = {
       uid: user.uid,
       email: user.email,
-      displayName: user.displayName || (user.email || "").split("@")[0],
+      displayName: dbName || user.displayName || (user.email || "").split("@")[0],
     };
     attachUserListeners(user.uid);
   } else {
@@ -290,6 +303,14 @@ const Store = {
       createdAt: Date.now(),
       longestStreak: 0,
     });
+    // onAuthStateChanged feuerte direkt nach createUser mit leerem displayName –
+    // jetzt steht der echte Name in der DB, also synchronisieren wir currentUser
+    // sofort, damit die UI nicht den Email-Prefix anzeigt.
+    if (currentUser && currentUser.uid === cred.user.uid) {
+      currentUser = { ...currentUser, displayName: name };
+      notifyAuth();
+      notify();
+    }
     return cred.user;
   },
 

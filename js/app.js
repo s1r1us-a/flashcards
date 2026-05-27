@@ -1003,6 +1003,7 @@
         renderBoxes();
       } else {
         updateNav();
+        if (state.view === "profile") renderProfile();
       }
     } else {
       state.currentCategoryId = null;
