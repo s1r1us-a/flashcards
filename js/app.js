@@ -789,10 +789,29 @@
   function openImportModal() {
     $("#import-text").value = "";
     $("#import-delimiter").value = "auto";
+    const fileInput = $("#import-file");
+    if (fileInput) fileInput.value = "";
+    const nameEl = $("#import-file-name");
+    if (nameEl) { nameEl.hidden = true; nameEl.textContent = ""; }
     renderImportPreview();
     $("#modal-import").classList.add("is-open");
-    if (!matchMedia("(pointer: coarse)").matches) {
-      setTimeout(() => $("#import-text").focus(), 50);
+  }
+
+  async function loadImportFile(file) {
+    if (!file) return;
+    const MAX_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_BYTES) { showToast("Datei zu groß (max. 5 MB)"); return; }
+    try {
+      const text = await file.text();
+      $("#import-text").value = text;
+      const nameEl = $("#import-file-name");
+      if (nameEl) {
+        nameEl.hidden = false;
+        nameEl.textContent = `${file.name} · ${Math.max(1, Math.round(file.size / 1024))} KB`;
+      }
+      renderImportPreview();
+    } catch (err) {
+      showToast("Datei konnte nicht gelesen werden");
     }
   }
   function renderImportPreview() {
@@ -1295,6 +1314,41 @@
     const importDelim = $("#import-delimiter");
     if (importText) importText.addEventListener("input", renderImportPreview);
     if (importDelim) importDelim.addEventListener("change", renderImportPreview);
+
+    // Import: Datei-Upload + Drag&Drop
+    const importDrop = $("#import-dropzone");
+    const importFile = $("#import-file");
+    if (importDrop && importFile) {
+      importDrop.addEventListener("click", (e) => {
+        if (e.target.closest("textarea, input, button")) return;
+        importFile.click();
+      });
+      importDrop.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); importFile.click(); }
+      });
+      importDrop.setAttribute("tabindex", "0");
+      importDrop.setAttribute("role", "button");
+      importFile.addEventListener("change", (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) loadImportFile(f);
+      });
+      ["dragenter", "dragover"].forEach((ev) => {
+        importDrop.addEventListener(ev, (e) => {
+          e.preventDefault(); e.stopPropagation();
+          importDrop.classList.add("is-dragover");
+        });
+      });
+      ["dragleave", "drop"].forEach((ev) => {
+        importDrop.addEventListener(ev, (e) => {
+          e.preventDefault(); e.stopPropagation();
+          importDrop.classList.remove("is-dragover");
+        });
+      });
+      importDrop.addEventListener("drop", (e) => {
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) loadImportFile(f);
+      });
+    }
 
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
