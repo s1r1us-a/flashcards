@@ -431,7 +431,7 @@
             </div>
             <div class="stat-cell">
               <div class="stat-value">${stats.library.publishedCount}</div>
-              <div class="stat-label">Im Shop</div>
+              <div class="stat-label">Öffentlich</div>
             </div>
           </div>
           <p class="muted small">Lernfortschritt bleibt privat.</p>
@@ -456,7 +456,7 @@
                 <span class="pill-dot"></span>${escapeHtml(mostInst.name)} · ${mostInst.installCount || 0}×
               </span>
             </div>` : `
-            <p class="muted small">Noch keine Box im Shop veröffentlicht.</p>`}
+            <p class="muted small">Noch keine Box unter Öffentlich veröffentlicht.</p>`}
         </section>
 
       </div>`;
@@ -990,8 +990,8 @@
 
     $("#publish-description").value = cat.description || "";
     $("#publish-status-text").textContent = cat.published
-      ? "Diese Box ist im Shop verfügbar. Du kannst die Beschreibung anpassen oder die Veröffentlichung zurückziehen."
-      : "Andere Nutzer können diese Box im Shop sehen und ihrer Bibliothek hinzufügen.";
+      ? "Diese Box ist unter Öffentlich verfügbar. Du kannst die Beschreibung anpassen oder die Veröffentlichung zurückziehen."
+      : "Andere Nutzer können diese Box unter Öffentlich sehen und ihrer Bibliothek hinzufügen.";
     $("#publish-submit-btn").textContent = cat.published ? "Speichern" : "Veröffentlichen";
     $("#unpublish-btn").hidden = !cat.published;
     $("#modal-publish").classList.add("is-open");
@@ -1459,7 +1459,7 @@
           if (isOwnBox && cat.published) {
             openConfirmModal({
               title: "Box ist veröffentlicht",
-              message: "Diese Box ist im Shop veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst aus dem Shop.",
+              message: "Diese Box ist unter Öffentlich veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst von dort.",
               confirmText: "OK",
               hideCancel: true,
             });
@@ -1510,7 +1510,7 @@
           if (cat.published) {
             openConfirmModal({
               title: "Box ist veröffentlicht",
-              message: "Diese Box ist im Shop veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst aus dem Shop.",
+              message: "Diese Box ist unter Öffentlich veröffentlicht und kann nicht gelöscht werden. Entferne sie zuerst von dort.",
               confirmText: "OK",
               hideCancel: true,
             });

@@ -1,5 +1,5 @@
 {
-  "_comment": "Firebase Realtime Database Security Rules für Flashcards. In der Firebase Console unter 'Realtime Database → Rules' einfügen. Lesen aller Boxen/Karten/Users ist für eingeloggte Nutzer erlaubt (für Shop und Autor-Anzeige). Eigene Boxen sind immer vom Ersteller schreibbar; veröffentlichte Boxen (published=true) dürfen von allen angemeldeten Nutzern gemeinschaftlich bearbeitet werden (Wiki-Modus). Das published-Flag selbst und die ownerId bleiben dem Ersteller vorbehalten. Jede Änderung an lastModifiedBy muss die eigene auth.uid tragen (Audit-Trail).",
+  "_comment": "Firebase Realtime Database Security Rules für Flashcards. In der Firebase Console unter 'Realtime Database → Rules' einfügen. Lesen aller Boxen/Karten/Users ist für eingeloggte Nutzer erlaubt (für Öffentlich-Bereich und Autor-Anzeige). Eigene Boxen sind immer vom Ersteller schreibbar; veröffentlichte Boxen (published=true) dürfen von allen angemeldeten Nutzern gemeinschaftlich bearbeitet werden (Wiki-Modus). Das published-Flag selbst und die ownerId bleiben dem Ersteller vorbehalten. Jede Änderung an lastModifiedBy muss die eigene auth.uid tragen (Audit-Trail).",
   "rules": {
     ".read": false,
     ".write": false,
