@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0" />
   <meta name="theme-color" content="#0f0c29" />
   <title>Flashcards – Karteikarten</title>
-  <link rel="stylesheet" href="css/styles.css?v=5" />
+  <link rel="stylesheet" href="css/styles.css?v=6" />
 </head>
 <body>
   <div class="bg-orbs" aria-hidden="true">
@@ -23,9 +23,49 @@
       <span class="brand-name">Flashcards</span>
     </button>
     <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+    <div class="user-area" id="user-area" hidden>
+      <span class="user-chip" id="user-email"></span>
+      <button class="btn ghost btn-sm" data-action="logout">Abmelden</button>
+    </div>
   </header>
 
   <main id="app" class="app">
+    <!-- VIEW: Auth -->
+    <section class="view auth-view" data-view="auth" hidden>
+      <div class="auth-card glass">
+        <div class="auth-head">
+          <div class="auth-icon">◆</div>
+          <h1 id="auth-title">Anmelden</h1>
+          <p class="muted" id="auth-subtitle">Willkommen zurück bei Flashcards.</p>
+        </div>
+
+        <label class="field">
+          <span>Email</span>
+          <input class="input" id="auth-email" type="email" autocomplete="email" placeholder="du@beispiel.de" />
+        </label>
+
+        <label class="field" id="auth-password-field">
+          <span>Passwort</span>
+          <input class="input" id="auth-password" type="password" autocomplete="current-password" placeholder="••••••••" />
+        </label>
+
+        <label class="field" id="auth-password2-field" hidden>
+          <span>Passwort bestätigen</span>
+          <input class="input" id="auth-password2" type="password" autocomplete="new-password" placeholder="••••••••" />
+        </label>
+
+        <div class="auth-error" id="auth-error" hidden></div>
+
+        <button class="btn primary auth-submit" id="auth-submit" data-action="auth-submit">Anmelden</button>
+
+        <div class="auth-links" id="auth-links">
+          <a href="#" data-action="auth-switch-mode" data-mode="reset">Passwort vergessen?</a>
+          <span class="auth-sep">·</span>
+          <a href="#" data-action="auth-switch-mode" data-mode="register">Account erstellen</a>
+        </div>
+      </div>
+    </section>
+
     <!-- VIEW: Box overview -->
     <section class="view" data-view="boxes" hidden>
       <div class="view-head">
@@ -160,7 +200,7 @@
   <!-- Toast -->
   <div class="toast" id="toast" hidden></div>
 
-  <script type="module" src="js/store.js?v=4"></script>
-  <script type="module" src="js/app.js?v=4"></script>
+  <script type="module" src="js/store.js?v=6"></script>
+  <script type="module" src="js/app.js?v=6"></script>
 </body>
 </html>
